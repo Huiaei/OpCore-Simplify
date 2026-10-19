@@ -23,7 +23,7 @@
 > While OpCore Simplify significantly reduces setup time, the Hackintosh journey still requires:
 > - Understanding basic concepts from the [Dortania Guide](https://dortania.github.io/OpenCore-Install-Guide/)
 > - Testing and troubleshooting during the installation process
-> - Patience and persistence in resolving any issues that arise
+> - Patience and persistence in resolving any issues that remain
 >
 > Our tool does not guarantee a successful installation in the first attempt, but it should help you get started.
 
@@ -132,7 +132,7 @@
 
 > [!NOTE]
 > 1. After a successful installation, if OpenCore Legacy Patcher is required, simply apply root patches to activate the missing features (such as modern Broadcom Wi-Fi card and graphics acceleration).
->
+> 
 > 2. For AMD GPUs, after applying root patches from OpenCore Legacy Patcher, you need to remove the boot argument `-radvesa`/`-amd_no_dgpu_accel` for graphics acceleration to work.
 >
 > 3. For an NVIDIA Turing-or-newer card, see [NullMoth NVIDIA driver](#nullmoth-nvidia-driver) below.
