@@ -6,6 +6,7 @@ from Scripts import config_prodigy
 from Scripts import gathering_files
 from Scripts import hardware_customizer
 from Scripts import kext_maestro
+from Scripts import nullmoth
 from Scripts import report_validator
 from Scripts import run
 from Scripts import smbios
@@ -131,7 +132,7 @@ class OCPE:
             elif option == "no":
                 return False
 
-    def select_macos_version(self, hardware_report, native_macos_version, ocl_patched_macos_version):
+    def select_macos_version(self, hardware_report, native_macos_version, ocl_patched_macos_version, disabled_devices=None):
         suggested_macos_version = native_macos_version[1]
         version_pattern = re.compile(r'^(\d+)(?:\.(\d+)(?:\.(\d+))?)?$')
 
@@ -147,8 +148,9 @@ class OCPE:
                             elif device_id.startswith(("09", "19")):
                                 suggested_macos_version = "21.99.99"
 
-                        if self.u.parse_darwin_version(suggested_macos_version) > self.u.parse_darwin_version(device_props.get("Compatibility")[0]):
-                            suggested_macos_version = device_props.get("Compatibility")[0]
+                        if device_props.get("Compatibility")[0] is not None:
+                            if self.u.parse_darwin_version(suggested_macos_version) > self.u.parse_darwin_version(device_props.get("Compatibility")[0]):
+                                suggested_macos_version = device_props.get("Compatibility")[0]
 
         while True:
             if "Beta" in os_data.get_macos_name_by_darwin(suggested_macos_version):
@@ -162,6 +164,16 @@ class OCPE:
                 print("")
                 print("\033[1;36mSuggested macOS version:\033[0m")
                 print("- For better compatibility and stability, we suggest you to use only {} or older.".format(os_data.get_macos_name_by_darwin(suggested_macos_version)))
+            nullmoth_cards = nullmoth.NullMoth.cards(hardware_report, disabled_devices)
+            if nullmoth_cards:
+                print("")
+                print("\033[1;36mNullMoth NVIDIA driver:\033[0m")
+                print("- {} supported by nullmoth/nvidia-macos-driver.".format(", ".join(nullmoth_cards)))
+                print("- The driver supports macOS 15 Sequoia (Darwin 24) only.")
+                if nullmoth.NullMoth.tested(hardware_report, disabled_devices) != nullmoth_cards:
+                    print("- {}: not in the driver's tested list, so it may have unreported problems.".format(
+                        ", ".join(card for card in nullmoth_cards if card not in nullmoth.NullMoth.tested(hardware_report, disabled_devices))
+                    ))
             print("")
             print("Available macOS versions:")
             print("")
@@ -314,7 +326,7 @@ class OCPE:
         print("OpenCore EFI build complete.")
         time.sleep(2)
         
-    def check_bios_requirements(self, org_hardware_report, hardware_report):
+    def check_bios_requirements(self, org_hardware_report, hardware_report, disabled_devices=None):
         requirements = []
         
         org_firmware_type = org_hardware_report.get("BIOS", {}).get("Firmware Type", "Unknown")
@@ -331,16 +343,21 @@ class OCPE:
             if not resizable_bar_enabled:
                 requirements.append("Enable Above 4G Decoding")
                 requirements.append("Disable Resizable BAR/Smart Access Memory")
-                
+
+        if nullmoth.NullMoth.cards(hardware_report, disabled_devices):
+            # The driver's card maps memory above 4 GB, and Apple Secure Boot
+            # refuses kexts Apple did not sign.
+            requirements.append("Enable Above 4G Decoding (required by the NullMoth NVIDIA driver)")
+
         return requirements
 
-    def before_using_efi(self, org_hardware_report, hardware_report):
+    def before_using_efi(self, org_hardware_report, hardware_report, disabled_devices=None):
         self.u.head("Before Using EFI")
         print("")                 
         print("\033[93mPlease complete the following steps:\033[0m")
         print("")
         
-        bios_requirements = self.check_bios_requirements(org_hardware_report, hardware_report)
+        bios_requirements = self.check_bios_requirements(org_hardware_report, hardware_report, disabled_devices)
         if bios_requirements:
             print("* BIOS/UEFI Settings Required:")
             for requirement in bios_requirements:
@@ -357,6 +374,25 @@ class OCPE:
         print("        - If you have more than 15 ports on a single controller, enable the XhciPortLimit patch.")
         print("        - Save the file when finished.")
         print("")
+
+        nullmoth_cards = nullmoth.NullMoth.cards(hardware_report, disabled_devices)
+        if nullmoth_cards:
+            print("* NullMoth NVIDIA Driver ({}):".format(", ".join(nullmoth_cards)))
+            print("    - OpenCore on this stick is already set up for nullmoth/nvidia-macos-driver.")
+            print("    - BIOS: enable Above 4G Decoding, disable CSM.")
+            print("    - Do NOT add the driver's kexts (NVRM, NVAccel, NVRMFB, NVRMAGDC) to EFI/OC/Kexts:")
+            print("      they install to /Library/Extensions and load from macOS's own kernel collection.")
+            print("    - Install macOS with this EFI, then install the driver on the installed system:")
+            print("      https://github.com/nullmoth/nvidia-macos-driver")
+            print("    - Verify after the restart:")
+            print("        kmutil showloaded --list-only | grep nullmoth")
+            print("        system_profiler SPDisplaysDataType | head -20")
+            print("")
+            mux_help = nullmoth.NullMoth.mux_help(hardware_report)
+            if mux_help:
+                print("    - {}".format(mux_help))
+                print("")
+
         self.u.request_input()
         self.u.open_folder(self.result_dir)
 
@@ -400,13 +436,13 @@ class OCPE:
             if option == "1":
                 hardware_report_path, hardware_report = self.select_hardware_report()
                 hardware_report, native_macos_version, ocl_patched_macos_version = self.c.check_compatibility(hardware_report)
-                macos_version = self.select_macos_version(hardware_report, native_macos_version, ocl_patched_macos_version)
+                macos_version = self.select_macos_version(hardware_report, native_macos_version, ocl_patched_macos_version, disabled_devices)
                 customized_hardware, disabled_devices, needs_oclp = self.h.hardware_customization(hardware_report, macos_version)
                 smbios_model = self.s.select_smbios_model(customized_hardware, macos_version)
                 if not self.ac.ensure_dsdt():
                     self.ac.select_acpi_tables()
                 self.ac.select_acpi_patches(customized_hardware, disabled_devices)
-                needs_oclp = self.k.select_required_kexts(customized_hardware, macos_version, needs_oclp, self.ac.patches)
+                needs_oclp = self.k.select_required_kexts(customized_hardware, macos_version, needs_oclp, self.ac.patches, disabled_devices)
                 self.s.smbios_specific_options(customized_hardware, smbios_model, macos_version, self.ac.patches, self.k)
 
             if not hardware_report_path:
@@ -418,10 +454,10 @@ class OCPE:
                 continue
 
             if option == "2":
-                macos_version = self.select_macos_version(hardware_report, native_macos_version, ocl_patched_macos_version)
+                macos_version = self.select_macos_version(hardware_report, native_macos_version, ocl_patched_macos_version, disabled_devices)
                 customized_hardware, disabled_devices, needs_oclp = self.h.hardware_customization(hardware_report, macos_version)
                 smbios_model = self.s.select_smbios_model(customized_hardware, macos_version)
-                needs_oclp = self.k.select_required_kexts(customized_hardware, macos_version, needs_oclp, self.ac.patches)
+                needs_oclp = self.k.select_required_kexts(customized_hardware, macos_version, needs_oclp, self.ac.patches, disabled_devices)
                 self.s.smbios_specific_options(customized_hardware, smbios_model, macos_version, self.ac.patches, self.k)
             elif option == "3":
                 self.ac.customize_patch_selection()
@@ -432,10 +468,10 @@ class OCPE:
                 self.s.smbios_specific_options(customized_hardware, smbios_model, macos_version, self.ac.patches, self.k)
             elif option == "6":
                 if needs_oclp and not self.show_oclp_warning(macos_version):
-                    macos_version = self.select_macos_version(hardware_report, native_macos_version, ocl_patched_macos_version)
+                    macos_version = self.select_macos_version(hardware_report, native_macos_version, ocl_patched_macos_version, disabled_devices)
                     customized_hardware, disabled_devices, needs_oclp = self.h.hardware_customization(hardware_report, macos_version)
                     smbios_model = self.s.select_smbios_model(customized_hardware, macos_version)
-                    needs_oclp = self.k.select_required_kexts(customized_hardware, macos_version, needs_oclp, self.ac.patches)
+                    needs_oclp = self.k.select_required_kexts(customized_hardware, macos_version, needs_oclp, self.ac.patches, disabled_devices)
                     self.s.smbios_specific_options(customized_hardware, smbios_model, macos_version, self.ac.patches, self.k)
                     continue
 
@@ -448,7 +484,7 @@ class OCPE:
                     continue
                 
                 self.build_opencore_efi(customized_hardware, disabled_devices, smbios_model, macos_version, needs_oclp)
-                self.before_using_efi(hardware_report, customized_hardware)
+                self.before_using_efi(hardware_report, customized_hardware, disabled_devices)
 
                 self.u.head("Result")
                 print("")
