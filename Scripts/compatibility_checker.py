@@ -209,7 +209,7 @@ class CompatibilityChecker:
             if gpu_props.get("Compatibility") != (None, None):
                 if all(other_gpu_props.get("Compatibility") == (None, None) for other_gpu_props in self.hardware_report.get("GPU").values() if other_gpu_props != gpu_props):
                     pass
-                elif any(monitor_info.get("Connected GPU", gpu_name) != gpu_name for monitor_info in self.hardware_report.get("Monitor", {}).values() if monitor_info.get("Connector Type") == "Internal"):
+                elif any(monitor_info.get("Connected GPU", gpu_name) != gpu_name for monitor_name, monitor_info in self.hardware_report.get("Monitor", {}).values() if monitor_info.get("Connector Type") == "Internal"):
                     gpu_props["Compatibility"] = (None, None)
                     if gpu_props.get("OCLP Compatibility"):
                         del gpu_props["OCLP Compatibility"]
@@ -256,9 +256,10 @@ class CompatibilityChecker:
         print("   \033[1;93mNote:\033[0m Biometric authentication in macOS requires Apple T2 Chip,")
         print("     which is not available for Hackintosh systems.")
         print("")
-        for biometric_device, biometric_props in self.hardware_report.get("Biometric", {}).items():
+        for biometric_name, biometric_props in self.hardware_report.get("Biometric", {}).items():
             biometric_props["Compatibility"] = (None, None)
-            print("{}- {}: {}".format(" "*3, biometric_device, self.show_macos_compatibility(biometric_props.get("Compatibility"))))
+
+            print("{}- {}: {}".format(" "*3, biometric_name, self.show_macos_compatibility(biometric_props.get("Compatibility"))))
 
     def check_network_compatibility(self):
         for device_name, device_props in self.hardware_report.get("Network", {}).items():
@@ -359,7 +360,7 @@ class CompatibilityChecker:
             controller_props.get("Compatibility")
             for controller_props in storage_controllers.values()
         )
-        
+
         if storage_controllers and storage_compatibility == (None, None):
             print("")
             print("No compatible storage controller for macOS was found!")
