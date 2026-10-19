@@ -42,7 +42,7 @@ class ConfigProdigy:
             })
         
         return booter_mmiowhitelist
-
+    
     def add_booter_patch(self, smbios_model, macos_version):
         booter_patch = []
 
@@ -178,8 +178,8 @@ class ConfigProdigy:
             elif platform == "NUC":
                 igpu_properties["AAPL,ig-platform-id"] = "00001E59"
                 if device_id.startswith(("5912", "591B", "591A", "591D")):
-                    igpu_properties["AAPL,ig-platform-id"] = "00001B19"
-                elif device_id.startswith(("5926", "5927")):
+                    igpu_properties["AAPL,ig-platform-id"] = "00001B59"
+                if device_id.startswith(("5926", "5927")):
                     igpu_properties["AAPL,ig-platform-id"] = "02002619"
             elif platform == "Laptop":
                 igpu_properties["AAPL,ig-platform-id"] = "00001B59"
@@ -306,7 +306,7 @@ class ConfigProdigy:
                         return selected_layout_id, audio_controller_properties
             except:
                 continue
-   
+  
     def deviceproperties(self, hardware_report, disabled_devices, macos_version, kexts):
         deviceproperties_add = {}
 
@@ -427,7 +427,7 @@ class ConfigProdigy:
             return "Xeon" in processor_name
         
         return False
-
+    
     def spoof_cpuid(self, processor_name, cpu_codename, macos_version):
         if self.is_low_end_haswell_plus(processor_name, cpu_codename):
             return self.cpuids.get("Ivy Bridge")
@@ -444,7 +444,7 @@ class ConfigProdigy:
                 return self.cpuids.get("Coffee Lake")
             
         return None
-
+    
     def load_kernel_patch(self, motherboard_chipset, cpu_manufacturer, cpu_codename, cpu_cores, gpu_manufacturer, networks, macos_version, kexts, provide_current_cpu_info):
         kernel_patch = []
 
