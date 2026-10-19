@@ -201,7 +201,7 @@ class CompatibilityChecker:
                     connected_monitors.append("{} ({})".format(monitor_name, monitor_info.get("Connector Type")))
                     if "Intel" in gpu_manufacturer and device_id.startswith(("01", "04", "0A", "0C", "0D")):
                         if monitor_info.get("Connector Type") == "VGA":
-                            connected_monitors[-1] = "\033[0;31m{}{}\033[0m".format(connected_monitors[-1][:-1], ", unsupported")
+                            connected_monitors[-1] = "\033[0;31m{}{}\033[0m".format(connected_monitors[-1][:-1], ", unsupported)")
             if connected_monitors:
                 print("{}- Connected Monitor{}: {}".format(" "*6, "s" if len(connected_monitors) > 1 else "", ", ".join(connected_monitors)))
 
