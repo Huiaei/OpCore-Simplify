@@ -100,7 +100,7 @@
 
    ![Selecting hardware report](https://i.imgur.com/MbRmIGJ.png)
 
-   ![Loading ACPI Tables](https://i.imgur.com/NbL6N6v.png)
+   ![Loading ACPI Tables](https://i.imgur.com/SbL6N6v.png)
 
    ![Compatibility Checker](https://i.imgur.com/kuDGMmp.png)
 
@@ -206,7 +206,8 @@ Distributed under the BSD 3-Clause License. See `LICENSE` for more information.
 ## 📞 **Contact**
 
 **Hoang Hong Quan**
-> Facebook [@macforce2601](https://facebook.com/macforce2601) &nbsp;&middot;&n> Telegram [@lzhoang2601](https://t.me/lzhoang2601) &nbsp;&middot;
+> Facebook [@macforce2601](https://facebook.com/macforce2601) &nbsp;&middot;&nbsp;
+> Telegram [@lzhoang2601](https://t.me/lzhoang2601) &nbsp;&middot;&nbsp;
 > Email: lzhoang2601@gmail.com
 
 ## 🌟 **Star History**
