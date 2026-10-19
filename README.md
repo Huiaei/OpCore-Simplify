@@ -58,7 +58,7 @@
    - Spoof GPU IDs for certain AMD GPUs not recognized in macOS.
    - Use CpuTopologyRebuild kext for Intel CPUs with P-cores and E-cores to enhance performance.
    - Disable System Integrity Protection (SIP).
-   - Spoof CPU IDs for Intel Pentium, Celeron, Xeon, and Core processors.
+   - Spoof CPU IDs for Intel Pentium, Celeron, Core, and Xeon processors.
    - Add custom CPU names for AMD CPUs, as well as Intel Pentium, Celeron, Xeon, and Core lines from the Rocket Lake (11th) generation and newer.
    - Add a patch to allow booting macOS with unsupported SMBIOS.
    - Add NVRAM entries to bypass checking the internal Bluetooth controller.
@@ -76,7 +76,7 @@
 5. **Easy Customization**  
    In addition to the default settings applied, users can easily make further customizations if desired.
 
-   - Custom ACPI patches, and SMBIOS adjustments (**not recommended**).
+   - Custom ACPI patches, kexts, and SMBIOS adjustments (**not recommended**).
    - Force load kexts on unsupported macOS versions.
 
 ## 🚀 **How To Use**
@@ -100,7 +100,7 @@
 
    ![Selecting hardware report](https://i.imgur.com/MbRmIGJ.png)
 
-   ![Loading ACPI Tables](https://i.imgur.com/SbL6N6v.png)
+   ![Loading ACPI Tables](https://i.imgur.com/NbL6N6v.png)
 
    ![Compatibility Checker](https://i.imgur.com/kuDGMmp.png)
 
@@ -134,8 +134,8 @@
 > 1. After a successful installation, if OpenCore Legacy Patcher is required, simply apply root patches to activate the missing features (such as modern Broadcom Wi-Fi card and graphics acceleration).
 > 
 > 2. For AMD GPUs, after applying root patches from OpenCore Legacy Patcher, you need to remove the boot argument `-radvesa`/`-amd_no_dgpu_accel` for graphics acceleration to work.
-> 
-> 3. For an NVIDIA Turing-or-newer card, see [NullMoth NVIDIA driver](#-nullmoth-nvidia-driver) below.
+>
+> 3. For an NVIDIA Turing-or-newer card, see [NullMoth NVIDIA driver](#nullmoth-nvidia-driver) below.
 
 ## 🟫 **NullMoth NVIDIA driver**
 
@@ -206,8 +206,7 @@ Distributed under the BSD 3-Clause License. See `LICENSE` for more information.
 ## 📞 **Contact**
 
 **Hoang Hong Quan**
-> Facebook [@macforce2601](https://facebook.com/macforce2601) &nbsp;&middot;&nbsp;
-> Telegram [@lzhoang2601](https://t.me/lzhoang2601) &nbsp;&middot;&nbsp;
+> Facebook [@macforce2601](https://facebook.com/macforce2601) &nbsp;&middot;&n> Telegram [@lzhoang2601](https://t.me/lzhoang2601) &nbsp;&middot;
 > Email: lzhoang2601@gmail.com
 
 ## 🌟 **Star History**
