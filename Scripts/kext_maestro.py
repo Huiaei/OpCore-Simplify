@@ -3,6 +3,7 @@ from Scripts.datasets import kext_data
 from Scripts.datasets import os_data
 from Scripts.datasets import pci_data
 from Scripts.datasets import codec_layouts
+from Scripts import nullmoth
 from Scripts import utils
 import os
 import shutil
@@ -44,7 +45,7 @@ class KextMaestro:
                 continue
             
             match_key = matching_keys[0]
-
+            
             if match_key in ["IOPCIMatch", "IOPCIPrimaryMatch"]:
                 pci_list = properties[match_key].split(" ")
                 for pci_id in pci_list:
@@ -131,7 +132,7 @@ class KextMaestro:
 
         return True
 
-    def select_required_kexts(self, hardware_report, macos_version, needs_oclp, acpi_patches):
+    def select_required_kexts(self, hardware_report, macos_version, needs_oclp, acpi_patches, disabled_devices=None):
         self.utils.head("Select Required Kernel Extensions")
         print("")
         print("Checking for required kernel extensions...")
@@ -285,7 +286,7 @@ class KextMaestro:
                 print("")
                 print("{}. \033[1mitlwm\033[0m - More stable overall".format(len(wifi_options)))
                 print("   • Works with HeliPort app instead of native WiFi settings menu")
-                print("   • No Apple Continuity features and enterprise-level security")
+                print("   • No Apple Continuity features and enterprise security")
                 print("   • Can connect to Hidden Networks")
                 print("")
                 recommended_option = 1 if native_fork_available or darwin_major < 23 else 2
@@ -432,6 +433,14 @@ class KextMaestro:
 
         if needs_oclp:
             selected_kexts.extend(("AMFIPass", "RestrictEvents"))
+
+        if nullmoth.NullMoth.cards(hardware_report, disabled_devices):
+            # The NullMoth driver is not injected from EFI/OC/Kexts: its four
+            # kernel extensions install into /Library/Extensions and load from
+            # the Auxiliary Kernel Collection.  OpenCore only has to let them
+            # load, which needs Lilu (and AMFIPass on macOS 15) present.
+            selected_kexts.append("Lilu")
+            selected_kexts.append("AMFIPass")
 
         selected_kexts = list(dict.fromkeys(selected_kexts))
         force_load_kexts = self.verify_kext_compatibility(selected_kexts, macos_version)
@@ -761,7 +770,7 @@ class KextMaestro:
             contents.append("")
             contents.append("\033[1;93mStatus:\033[0m")
             contents.append("- [R] Required   [*] Selected   [!] Force loaded")
-            contents.append("- [ ] Available  [?] Force available   [-] Unavailable")
+            contents.append("- [ ] Available  [?] Force available  [-] Unavailable")
             contents.append("- When a plugin of a kext is selected, the entire kext will be automatically selected.")
             contents.append("- You can select multiple kexts by entering their indices separated by commas (e.g., '1, 2, 3').")
             contents.append("")
