@@ -23,7 +23,7 @@
 > While OpCore Simplify significantly reduces setup time, the Hackintosh journey still requires:
 > - Understanding basic concepts from the [Dortania Guide](https://dortania.github.io/OpenCore-Install-Guide/)
 > - Testing and troubleshooting during the installation process
-> - Patience and persistence in resolving any issues that remain
+> - Patience and persistence in resolving any issues that arise
 >
 > Our tool does not guarantee a successful installation in the first attempt, but it should help you get started.
 
