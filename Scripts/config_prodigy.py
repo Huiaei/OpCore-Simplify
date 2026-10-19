@@ -421,20 +421,37 @@ class ConfigProdigy:
 
     def is_intel_hedt_cpu(self, processor_name, cpu_codename):
         if cpu_codename in cpu_data.IntelCPUGenerations[45:66]:
-            return cpu_codename.endswith(("-X", "-P", "-W", "-E", "-EP", "-EX"))
-        
-        if cpu_codename in cpu_data.IntelCPUGenerations[66:]:
-            return "Xeon" in processor_name
-        
+            return True
+
         return False
-    
+
     def spoof_cpuid(self, processor_name, cpu_codename, macos_version):
-        if self.is_low_end_haswell_plus(processor_name, cpu_codename):
-            return self.cpuids.get("Ivy Bridge")
-        elif "Haswell" in cpu_codename and self.is_intel_hedt_cpu(processor_name, cpu_codename):
-            return self.cpuids.get("Haswell")
-        elif "Broadwell" in cpu_codename and self.is_intel_hedt_cpu(processor_name, cpu_codename):
-            return self.cpuids.get("Broadwell")
+        if "AMD" in processor_name:
+            return None
+
+        if cpu_codename in ("Ivy Bridge", "Haswell", "Broadwell"):
+            if not "i3-" in processor_name and not "i5-" in processor_name and not "i7-" in processor_name and not "i9-" in processor_name:
+                return None
+
+            if "Ivy Bridge" in cpu_codename:
+                return self.cpuids.get("Ivy Bridge")
+            if "Haswell" in cpu_codename:
+                return self.cpuids.get("Haswell")
+            if "Broadwell" in cpu_codename:
+                return self.cpuids.get("Broadwell")
+        elif "Coffee Lake" in cpu_codename or "Comet Lake" in cpu_codename:
+            if not "i3-" in processor_name and not "i5-" in processor_name and not "i7-" in processor_name and not "i9-" in processor_name:
+                return None
+
+            if self.utils.parse_darwin_version(macos_version) < self.utils.parse_darwin_version("19.0.0"):
+                return self.cpuids.get("Coffee Lake")
+            else:
+                return self.cpuids.get("Comet Lake")
+        elif "Ice Lake" in cpu_codename:
+            if not "i3-" in processor_name and not "i5-" in processor_name and not "i7-" in processor_name and not "i9-" in processor_name:
+                return None
+
+            return self.cpuids.get("Ice Lake")
         elif "Tiger Lake" in cpu_codename:
             return self.cpuids.get("Ice Lake")
         elif "Ice Lake" not in cpu_codename and cpu_codename in cpu_data.IntelCPUGenerations[:34]:
@@ -662,7 +679,6 @@ class ConfigProdigy:
         config["Kernel"]["Emulate"]["DummyPowerManagement"] = "AMD" in hardware_report.get("CPU").get("Manufacturer") or \
             self.is_low_end_intel_cpu(hardware_report.get("CPU").get("Processor Name"))
         config["Kernel"]["Force"] = []
-
         config["Kernel"]["Quirks"]["AppleCpuPmCfgLock"] = hardware_report.get("CPU").get("Codename") in cpu_data.IntelCPUGenerations[62:]
         config["Kernel"]["Quirks"]["AppleXcpmCfgLock"] = False if "AMD" in hardware_report.get("CPU").get("Manufacturer") else not config["Kernel"]["Quirks"]["AppleCpuPmCfgLock"]
         config["Kernel"]["Quirks"]["AppleXcpmExtraMsrs"] = self.is_intel_hedt_cpu(hardware_report.get("CPU").get("Processor Name"), hardware_report.get("CPU").get("Codename")) and hardware_report.get("CPU").get("Codename") in cpu_data.IntelCPUGenerations[50:]
