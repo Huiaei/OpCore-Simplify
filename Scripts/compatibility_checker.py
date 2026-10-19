@@ -1,8 +1,10 @@
 from Scripts.datasets import gpu_data
+from Scripts.datasets import nvidia_gsp_data
 from Scripts.datasets import os_data
 from Scripts.datasets import pci_data
 from Scripts.datasets import codec_layouts
 from Scripts import utils
+from Scripts import nullmoth
 import time
 
 class CompatibilityChecker:
@@ -167,7 +169,12 @@ class CompatibilityChecker:
                 else:
                     max_version = min_version = None
             elif "NVIDIA" in gpu_manufacturer:
-                if "Kepler" in gpu_codename:
+                if nullmoth.NullMoth.supported(gpu_props):
+                    # The NullMoth driver (nullmoth/nvidia-macos-driver) drives
+                    # Turing and newer cards on macOS 15 Sequoia.
+                    max_version = nullmoth.NullMoth.SEQUOIA[0]
+                    min_version = nullmoth.NullMoth.SEQUOIA[1]
+                elif "Kepler" in gpu_codename:
                     max_version = "20.99.99"
                 elif gpu_codename in ("Pascal", "Maxwell", "Fermi", "Tesla"):
                     max_version = "17.99.99"

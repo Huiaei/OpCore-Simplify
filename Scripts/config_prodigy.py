@@ -6,6 +6,7 @@ from Scripts.datasets import os_data
 from Scripts.datasets import pci_data
 from Scripts.datasets import codec_layouts
 from Scripts import gathering_files
+from Scripts import nullmoth
 from Scripts import smbios
 from Scripts import utils
 import random
@@ -502,7 +503,7 @@ class ConfigProdigy:
         
         return kernel_patch
 
-    def boot_args(self, hardware_report, macos_version, needs_oclp, kexts, config):
+    def boot_args(self, hardware_report, macos_version, needs_oclp, kexts, config, disabled_devices=None):
         boot_args = [
             "-v",
             "debug=0x100",
@@ -524,7 +525,13 @@ class ConfigProdigy:
                     boot_args.append("-lilubetaall")
 
             if kext.name == "WhateverGreen":
-                if  any(tuple(map(int, "3840x2160".split("x"))) <= tuple(map(int, monitor_info.get("Resolution").split("x"))) for monitor_name, monitor_info in hardware_report.get("Monitor", {}).items()) and \
+                if nullmoth.NullMoth.cards(hardware_report, disabled_devices):
+                    # The driver replaces WhateverGreen's NVIDIA support.  Its
+                    # patches are not needed for the card, and agdpmod=pikera
+                    # below would fight the driver, so the NVIDIA branch is
+                    # skipped for a supported card.
+                    pass
+                elif any(tuple(map(int, "3840x2160".split("x"))) <= tuple(map(int, monitor_info.get("Resolution").split("x"))) for monitor_name, monitor_info in hardware_report.get("Monitor", {}).items()) and \
                     self.utils.parse_darwin_version(macos_version) < self.utils.parse_darwin_version("20.0.0"):
                     boot_args.append("-cdfon")
 
@@ -548,7 +555,11 @@ class ConfigProdigy:
 
                 discrete_gpu = list(hardware_report.get("GPU").items())[0][-1]
                 if discrete_gpu.get("Device Type") == "Discrete GPU":
-                    if "Navi" in discrete_gpu.get("Codename"):
+                    if nullmoth.NullMoth.supported(discrete_gpu):
+                        # The driver replaces WhateverGreen's NVIDIA support:
+                        # no agdpmod=pikera, no OCLP web-driver arguments.
+                        pass
+                    elif "Navi" in discrete_gpu.get("Codename"):
                         boot_args.append("agdpmod=pikera")
 
                     if discrete_gpu.get("Device ID") in pci_data.SpoofGPUIDs:
@@ -563,7 +574,7 @@ class ConfigProdigy:
                     if discrete_gpu.get("OCLP Compatibility"):
                         if discrete_gpu.get("Manufacturer") == "AMD":
                             boot_args.append("-radvesa" if self.utils.parse_darwin_version(macos_version) < self.utils.parse_darwin_version("23.0.0") else "-amd_no_dgpu_accel")
-                        elif discrete_gpu.get("Manufacturer") == "NVIDIA" and not "Kepler" in discrete_gpu.get("Codename"):
+                        elif discrete_gpu.get("Manufacturer") == "NVIDIA" and not "Kepler" in discrete_gpu.get("Codename") and not nullmoth.NullMoth.supported(discrete_gpu):
                             boot_args.extend(("nvda_drv_vrl=1", "ngfxcompat=1", "ngfxgl=1"))
             elif kext.name == "AppleALC":
                 selected_layout_id, _ = self.select_audio_codec_layout(hardware_report, config)
@@ -633,7 +644,7 @@ class ConfigProdigy:
             hardware_report.get("Motherboard").get("Chipset") in chipset_data.IntelChipsets[104:112] and (not "-8" in hardware_report.get("CPU").get("Processor Name") or hardware_report.get("Motherboard").get("Chipset") == chipset_data.IntelChipsets[109])
         config["Booter"]["Quirks"]["ProvideCustomSlide"] = hardware_report.get("BIOS").get("Firmware Type") == "UEFI"
         config["Booter"]["Quirks"]["RebuildAppleMemoryMap"] = not config["Booter"]["Quirks"]["EnableWriteUnprotector"] if hardware_report.get("CPU").get("Codename") not in cpu_data.IntelCPUGenerations[-11:] else self.utils.parse_darwin_version(macos_version) < self.utils.parse_darwin_version("10.0.0")
-        config["Booter"]["Quirks"]["ResizeAppleGpuBars"] = 0 if any(gpu_props.get("Resizable BAR", "Disabled") == "Enabled" for gpu_name, gpu_props in hardware_report.get("GPU", {}).items()) else -1
+        config["Booter"]["Quirks"]["ResizeAppleGpuBars"] = nullmoth.NullMoth.resize_apple_gpu_bars(hardware_report, macos_version, config["Booter"]["Quirks"].get("ResizeAppleGpuBars", -1))
         config["Booter"]["Quirks"]["SetupVirtualMap"] = hardware_report.get("BIOS").get("Firmware Type") == "UEFI" and not hardware_report.get("Motherboard").get("Chipset") in chipset_data.AMDChipsets[11:17] + chipset_data.IntelChipsets[90:100]
         config["Booter"]["Quirks"]["SyncRuntimePermissions"] = "AMD" in hardware_report.get("CPU").get("Manufacturer") or hardware_report.get("Motherboard").get("Chipset") in chipset_data.IntelChipsets[90:100] + chipset_data.IntelChipsets[104:]
 
@@ -686,7 +697,7 @@ class ConfigProdigy:
         config["Misc"]["Tools"] = []
 
         del config["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["#INFO (prev-lang:kbd)"]
-        config["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"] = self.boot_args(hardware_report, macos_version, needs_oclp, kexts, config)
+        config["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["boot-args"] = self.boot_args(hardware_report, macos_version, needs_oclp, kexts, config, disabled_devices)
         config["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["csr-active-config"] = self.utils.hex_to_bytes(self.csr_active_config(macos_version))
         config["NVRAM"]["Delete"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"].append("csr-active-config")
         config["NVRAM"]["Add"]["7C436110-AB2A-4BBB-A880-FE41995C9F82"]["prev-lang:kbd"] = self.utils.hex_to_bytes("")
@@ -743,5 +754,7 @@ class ConfigProdigy:
                 config["NVRAM"]["Add"]["4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102"]["revblock"] = ",".join(revblock)
         
         config["NVRAM"]["Delete"]["4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102"] = list(config["NVRAM"]["Add"]["4D1FDA02-38C7-4A6A-9CC6-4BCCA8B30102"].keys())
+
+        nullmoth.NullMoth.apply(config, hardware_report, kexts, disabled_devices=disabled_devices)
 
         return config

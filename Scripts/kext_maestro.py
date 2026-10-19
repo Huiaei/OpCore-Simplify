@@ -3,6 +3,7 @@ from Scripts.datasets import kext_data
 from Scripts.datasets import os_data
 from Scripts.datasets import pci_data
 from Scripts.datasets import codec_layouts
+from Scripts import nullmoth
 from Scripts import utils
 import os
 import shutil
@@ -131,7 +132,7 @@ class KextMaestro:
 
         return True
 
-    def select_required_kexts(self, hardware_report, macos_version, needs_oclp, acpi_patches):
+    def select_required_kexts(self, hardware_report, macos_version, needs_oclp, acpi_patches, disabled_devices=None):
         self.utils.head("Select Required Kernel Extensions")
         print("")
         print("Checking for required kernel extensions...")
@@ -432,6 +433,14 @@ class KextMaestro:
 
         if needs_oclp:
             selected_kexts.extend(("AMFIPass", "RestrictEvents"))
+
+        if nullmoth.NullMoth.cards(hardware_report, disabled_devices):
+            # The NullMoth driver is not injected from EFI/OC/Kexts: its four
+            # kernel extensions install into /Library/Extensions and load from
+            # the Auxiliary Kernel Collection.  OpenCore only has to let them
+            # load, which needs Lilu (and AMFIPass on macOS 15) present.
+            selected_kexts.append("Lilu")
+            selected_kexts.append("AMFIPass")
 
         selected_kexts = list(dict.fromkeys(selected_kexts))
         force_load_kexts = self.verify_kext_compatibility(selected_kexts, macos_version)
