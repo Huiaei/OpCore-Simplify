@@ -179,8 +179,8 @@ class ConfigProdigy:
                 igpu_properties["AAPL,ig-platform-id"] = "00001E59"
                 if device_id.startswith(("5912", "591B", "591A", "591D")):
                     igpu_properties["AAPL,ig-platform-id"] = "00001B59"
-                if device_id.startswith(("5926", "5927")):
-                    igpu_properties["AAPL,ig-platform-id"] = "02002619"
+                elif device_id.startswith(("5926", "5927")):
+                    igpu_properties["AAPL,ig-platform-id"] = "02002659"
             elif platform == "Laptop":
                 igpu_properties["AAPL,ig-platform-id"] = "00001B59"
                 if device_id.startswith(("5917", "87C0")):
