@@ -662,6 +662,7 @@ class ConfigProdigy:
         config["Kernel"]["Emulate"]["DummyPowerManagement"] = "AMD" in hardware_report.get("CPU").get("Manufacturer") or \
             self.is_low_end_intel_cpu(hardware_report.get("CPU").get("Processor Name"))
         config["Kernel"]["Force"] = []
+
         config["Kernel"]["Quirks"]["AppleCpuPmCfgLock"] = hardware_report.get("CPU").get("Codename") in cpu_data.IntelCPUGenerations[62:]
         config["Kernel"]["Quirks"]["AppleXcpmCfgLock"] = False if "AMD" in hardware_report.get("CPU").get("Manufacturer") else not config["Kernel"]["Quirks"]["AppleCpuPmCfgLock"]
         config["Kernel"]["Quirks"]["AppleXcpmExtraMsrs"] = self.is_intel_hedt_cpu(hardware_report.get("CPU").get("Processor Name"), hardware_report.get("CPU").get("Codename")) and hardware_report.get("CPU").get("Codename") in cpu_data.IntelCPUGenerations[50:]
