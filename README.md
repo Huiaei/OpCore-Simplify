@@ -35,7 +35,7 @@
    | **Component**  | **Supported**                                                                                       |
    |----------------|-----------------------------------------------------------------------------------------------------|
    | **CPU**        | Intel: Nehalem and Westmere (1st Gen) → Arrow Lake (15th Gen/Core Ultra Series 2) <br> AMD: Ryzen and Threadripper with [AMD Vanilla](https://github.com/AMD-OSX/AMD_Vanilla) |
-   | **GPU**        | Intel iGPU: Iron Lake (1st Gen) → Ice Lake (10th Gen) <br> AMD APU: The entire Vega Raven ASIC family (Ryzen 1xxx → 5xxx, 7x30 series) <br> AMD dGPU: Navi 23, Navi 22, Navi 21 generations, and older series <br> NVIDIA: Kepler, Pascal, Maxwell, Fermi, Tesla generations |
+   | **GPU**        | Intel iGPU: Iron Lake (1st Gen) → Ice Lake (10th Gen) <br> AMD APU: The entire Vega Raven ASIC family (Ryzen 1xxx → 5xxx, 7x30 series) <br> AMD dGPU: Navi 23, Navi 22, Navi 21 generations, and older series <br> NVIDIA: Kepler, Pascal, Maxwell, Fermi, Tesla generations <br> NVIDIA Turing and newer (GTX 16, RTX 20/30/40/50, TITAN RTX, Quadro RTX, Quadro T-series) on macOS 15 Sequoia via the [NullMoth NVIDIA driver](https://github.com/nullmoth/nvidia-macos-driver) |
    | **macOS**      | macOS High Sierra → macOS Tahoe |
 
 2. **ACPI Patches and Kexts**  
@@ -134,6 +134,59 @@
 > 1. After a successful installation, if OpenCore Legacy Patcher is required, simply apply root patches to activate the missing features (such as modern Broadcom Wi-Fi card and graphics acceleration).
 > 
 > 2. For AMD GPUs, after applying root patches from OpenCore Legacy Patcher, you need to remove the boot argument `-radvesa`/`-amd_no_dgpu_accel` for graphics acceleration to work.
+>
+> 3. For an NVIDIA Turing-or-newer card, see [NullMoth NVIDIA driver](#nullmoth-nvidia-driver) below.
+
+## 🟫 **NullMoth NVIDIA driver**
+
+This fork adds support for NVIDIA Turing and newer cards (GTX 16, RTX 20/30/40/50, TITAN RTX, Quadro RTX and the Quadro T-series) on
+**macOS 15 Sequoia** through the [NullMoth NVIDIA driver](https://github.com/nullmoth/nvidia-macos-driver) — NVIDIA's own open GPU kernel
+modules (r610) with a Metal plugin, a framebuffer, an accelerator and an AGDC shim on top.
+
+The supported card list comes from NVIDIA's `open-gpu-kernel-modules` 610.57.04 table, stored in
+[`Scripts/datasets/nvidia_gsp_data.py`](Scripts/datasets/nvidia_gsp_data.py). Kepler, Maxwell and Pascal are **not** supported by the
+driver and keep their original (OCLP) path.
+
+When a supported card is found, OpCore Simplify writes the settings the driver needs into `config.plist`:
+
+| Setting | Value | Why |
+|---|---|---|
+| `NVRAM → Add → 7C436110-… → boot-args` | `nvfb=1 nvaccel=1 nvfbheads=4 -nvkmsnosmooth amfi_get_out_of_my_way=0x1 amfi=0x80 ipc_control_port_options=0` | framebuffer + accelerator, 4 display heads; the AMFI arguments let WindowServer load the driver bundle |
+| `NVRAM → Add → … → csr-active-config` | `<430A0000>` | the SIP value the driver was tested with (its kexts are not Apple-signed) |
+| `Misc → Security → SecureBootModel` | `Disabled` | Apple Secure Boot refuses kexts Apple did not sign |
+| `Kernel → Block` | `com.apple.iokit.IONDRVSupport`, `Exclude` | otherwise the firmware framebuffer takes display index 0 from NVRMFB |
+| `Kernel → Add` | `Lilu.kext`, `AMFIPass.kext` | the driver's dependencies |
+| `Booter → Quirks → ResizeAppleGpuBars` | `-1` | keep the firmware's BAR sizing; the driver sets the BAR up itself once macOS runs |
+| `UEFI → Quirks → ResizeGpuBars` | `-1` | forced resizing can stop the firmware before the picker |
+
+`nv_disable=1`, `-wegnoegpu` and `agdpmod=pikera` are removed for the card, and `gfxrst=4` is added when WhateverGreen is also present
+(for an Intel or AMD GPU on the same machine). While the config is used to boot the **macOS installer** — which has no NVIDIA driver and
+runs on the firmware framebuffer — the installer values are used instead: `ResizeAppleGpuBars = 0`, `ResizeGpuBars = -1`, and
+`IONDRVSupport` is left unblocked.
+
+On a laptop with both an NVIDIA and an Intel GPU, the NVIDIA card is woken from ACPI (`acpi-wake-type = 1`) so an Optimus machine does not
+put it back to sleep before the driver claims it, and the *Before Using EFI* screen prints the mux note.
+
+The driver's four kernel extensions (`NVRM`, `NVAccel`, `NVRMFB`, `NVRMAGDC`) are **not** injected from `EFI/OC/Kexts`: they install to
+`/Library/Extensions` and load from the Auxiliary Kernel Collection. OpenCore only has to set SIP and the boot arguments.
+
+After installing macOS with the built EFI, install the driver on the installed system:
+
+```bash
+tar -xzf nullmoth-nvidia-*.tar.gz && cd pkgroot
+shasum -a 256 -c SHA256SUMS
+sudo ./install.sh
+```
+
+BIOS requirements: **Above 4G Decoding ON**, **CSM OFF**. Verify after the restart:
+
+```bash
+kmutil showloaded --list-only | grep nullmoth   # 4 lines
+system_profiler SPDisplaysDataType | head -20   # your card, Metal: supported
+```
+
+The [1401](https://github.com/nullmoth/1401) app (Windows and macOS) automates the driver install and its boot-picker entry
+(*1401: Remove NVIDIA driver*); this fork's job is only to produce the OpenCore side of that setup.
 
 ## 🤝 **Contributing**
 
