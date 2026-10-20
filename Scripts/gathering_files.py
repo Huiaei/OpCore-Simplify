@@ -2,6 +2,7 @@ from Scripts import github
 from Scripts import kext_maestro
 from Scripts import integrity_checker
 from Scripts import resource_fetcher
+from Scripts import compat
 from Scripts import utils
 import os
 import shutil
@@ -111,8 +112,25 @@ class gatheringFiles:
         if not "OpenCore" in product_name:
             kext_paths = self.utils.find_matching_paths(temp_product_dir, extension_filter=".kext")
             for kext_path, type in kext_paths:
+                # The combined release repeats AirPort_RTW88 in the Sonoma folder
+                # and may reorganise the folders between releases.  Keep one copy
+                # of each driver kext by bundle name; the stack dependencies
+                # (IO80211FamilyLegacy, IOSkywalkFamily, AMFIPass) come from
+                # their own catalog sources.
+                if product_name == "RealtekAirPortFamily" and os.path.splitext(os.path.basename(kext_path))[0] not in (
+                    "AirPort_RTW88",
+                    "Realtek88LegacyAirport",
+                    "HS80211Family",
+                ):
+                    continue
                 source_kext_path = os.path.join(self.temporary_dir, product_name, kext_path)
                 destination_kext_path = os.path.join(self.ock_files_dir, product_name, os.path.basename(kext_path))
+
+                if product_name == "RealtekAirPortFamily":
+                    # The combined release ships the same driver in more than one
+                    # folder; keep a single copy per bundle name.
+                    if os.path.exists(destination_kext_path):
+                        continue
                 
                 if "research" in kext_path.lower() or "debug" in kext_path.lower() or "Contents" in kext_path or not self.kext.process_kext(temp_product_dir, kext_path):
                     continue
@@ -138,7 +156,7 @@ class gatheringFiles:
                         source_dir = os.path.join(ocbinarydata_dir, dir_name)
                         destination_dir = os.path.join(destination_efi_path, "OC", dir_name)
                         if os.path.isdir(destination_dir):
-                            shutil.copytree(source_dir, destination_dir, dirs_exist_ok=True)
+                            compat.copytree_merge(source_dir, destination_dir)
 
                     resources_image_dir = os.path.join(product_dir, efi_dir, "OC", "Resources", "Image")
                     picker_variants = self.utils.find_matching_paths(resources_image_dir, type_filter="dir")
@@ -175,7 +193,9 @@ class gatheringFiles:
 
             product_name = product.name if not isinstance(product, dict) else product.get("Name")
             
-            if product_name == "AirportItlwm":
+            if product_name in ("AirPort_RTW88", "Realtek88LegacyAirport", "HS80211Family"):
+                product_name = "RealtekAirPortFamily"
+            elif product_name == "AirportItlwm":
                 version = macos_version[:2]
                 if all((self.utils.parse_darwin_version("24.0.0") <= self.utils.parse_darwin_version(macos_version), kexts[kext_maestro.kext_data.kext_index_by_name.get("IOSkywalkFamily")].checked, kexts[kext_maestro.kext_data.kext_index_by_name.get("IO80211FamilyLegacy")].checked)):
                     version = "22"

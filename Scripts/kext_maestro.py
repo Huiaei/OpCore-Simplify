@@ -5,6 +5,8 @@ from Scripts.datasets import pci_data
 from Scripts.datasets import codec_layouts
 from Scripts import nullmoth
 from Scripts import utils
+from Scripts import realtek_airport
+from Scripts import compat
 import os
 import shutil
 
@@ -104,6 +106,8 @@ class KextMaestro:
             return False
 
         kext = self.kexts[index]
+        if kext.name == "AirPort_RTW88":
+            kext.requires_kexts = realtek_airport.selected_kexts(target_darwin_version)[1:]
         checking = checking or set()
 
         if kext.checked:
@@ -311,6 +315,8 @@ class KextMaestro:
                     selected_kexts.append("AirPortAtheros40-Tahoe")
                 if self.utils.parse_darwin_version(macos_version) > self.utils.parse_darwin_version("20.99.99"):
                     selected_kexts.append("AMFIPass")
+            elif device_id in pci_data.RealtekAirPortIDs:
+                selected_kexts.extend(realtek_airport.selected_kexts(macos_version))
             elif device_id in pci_data.rtw88WiFiIDs:
                 selected_kexts.append("Feixiao")
             elif device_id in pci_data.IntelI22XIDs:
@@ -490,7 +496,7 @@ class KextMaestro:
                     if kext.name in ("AirportItlwm-laobamac", "SimpleHDA") and not source_kext_path:
                         raise FileNotFoundError("Downloaded bundle not found for {}.".format(kext.name))
                     if os.path.exists(source_kext_path):
-                        shutil.copytree(source_kext_path, destination_kext_path, dirs_exist_ok=True)
+                        compat.copytree_merge(source_kext_path, destination_kext_path)
                 except Exception:
                     if kext.name in ("AirportItlwm-laobamac", "SimpleHDA"):
                         raise
