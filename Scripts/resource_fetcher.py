@@ -58,25 +58,45 @@ class ResourceFetcher:
 
         return None
 
-    def fetch_and_parse_content(self, resource_url, content_type=None):
+    def _get_dortania_mirrors(self):
+        return [
+            "https://raw.githubusercontent.com/dortania/build-repo/builds/latest.json",
+            "https://fastly.jsdelivr.net/gh/dortania/build-repo@builds/latest.json",
+            "https://cdn.jsdelivr.net/gh/dortania/build-repo@builds/latest.json",
+            "https://gcore.jsdelivr.net/gh/dortania/build-repo@builds/latest.json",
+            "https://gh-proxy.com/https://raw.githubusercontent.com/dortania/build-repo/builds/latest.json",
+            "https://ghfast.top/https://raw.githubusercontent.com/dortania/build-repo/builds/latest.json",
+        ]
+
+    def fetch_and_parse_content(self, resource_url, content_type=None, mirrors=None):
+        candidate_urls = [resource_url] + list(mirrors or [])
         attempt = 0
         response = None
+        tried = []
 
-        while attempt < 3:
-            response = self._make_request(resource_url)
-
-            if not response:
+        for url in candidate_urls:
+            while attempt < MAX_ATTEMPTS:
                 attempt += 1
-                print("Failed to fetch content from {}. Retrying...".format(resource_url))
-                continue
+                response = self._make_request(url)
 
-            if response.getcode() == 200:
+                if not response:
+                    print("Failed to fetch content from {}. Retrying...".format(url))
+                    continue
+
+                if response.getcode() == 200:
+                    break
+
+                attempt += 1
+
+            if response and response.getcode() == 200:
                 break
 
-            attempt += 1
+            response = None
+            attempt = 0
+            tried.append(url)
 
         if not response:
-            print("Failed to fetch content from {}".format(resource_url))
+            print("Failed to fetch content from {} (tried: {})".format(resource_url, ", ".join(tried) or resource_url))
             return None
         
         content = response.read()
