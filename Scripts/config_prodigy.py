@@ -22,6 +22,7 @@ class ConfigProdigy:
             "Broadwell": "D4060300",
             "Coffee Lake": "EB060800",
             "Comet Lake": "55060A00",
+            "Comet Lake 10th Gen": "EC060800",
             "Ice Lake": "E5060700"
         }
 
@@ -442,6 +443,10 @@ class ConfigProdigy:
                 return self.cpuids.get("Comet Lake")
             if self.utils.parse_darwin_version(macos_version) < self.utils.parse_darwin_version("19.0.0"):
                 return self.cpuids.get("Coffee Lake")
+            # Comet Lake boards (e.g. NUC10) fail the Sequoia boot with EXITBS:START
+            # when no Cpuid1Data/Cpuid1Mask is present in Kernel -> Emulate.
+            if self.utils.parse_darwin_version(macos_version) >= self.utils.parse_darwin_version("24.0.0"):
+                return self.cpuids.get("Comet Lake 10th Gen")
             
         return None
     

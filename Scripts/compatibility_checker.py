@@ -289,6 +289,10 @@ class CompatibilityChecker:
             elif device_id in pci_data.RealtekAirPortIDs:
                 min_version, max_version = "18.0.0", "25.99.99"
                 device_props["Unsupported Darwin Majors"] = [21]
+            elif device_id in pci_data.Intel8254XIDs:
+                # Intel PRO/1000 PT (82571) works with Apple's native AppleIntel8254XEthernet.kext,
+                # which Apple removed in macOS Ventura. No third-party kext supports this chip.
+                max_version = "21.99.99"
             elif device_id in pci_data.IntelI22XIDs:
                 min_version = "19.0.0"
             elif device_id in pci_data.AquantiaAqtionIDs:

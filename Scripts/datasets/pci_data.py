@@ -691,6 +691,12 @@ BroadcomBCM57XXIDs = [
     "14E4-16B4"
 ]
 
+Intel8254XIDs = [
+    # AppleIntel8254XEthernet.kext (native, removed by Apple in macOS Ventura)
+    "8086-105E",
+    "8086-105F"
+]
+
 IntelI22XIDs = [
     # AppleIGC.kext
     "8086-3102",
@@ -844,7 +850,7 @@ RealtekRTL812xIDs = [
     "1186-8125"
 ]
 
-EthernetIDs = AppleIGBIDs + AquantiaAqtionIDs + AtherosE2200IDs + BroadcomBCM57XXIDs + IntelI22XIDs + IntelMausiIDs + IntelX500IDs + RealtekRTL8100IDs + RealtekRTL8111IDs + RealtekRTL8125IDs + RealtekRTL812xIDs
+EthernetIDs = AppleIGBIDs + AquantiaAqtionIDs + AtherosE2200IDs + BroadcomBCM57XXIDs + Intel8254XIDs + IntelI22XIDs + IntelMausiIDs + IntelX500IDs + RealtekRTL8100IDs + RealtekRTL8111IDs + RealtekRTL8125IDs + RealtekRTL812xIDs
 
 WirelessUSBIDs = [
     # RtWlanU.kext, RtWlanU1827.kext and RT2870USBWirelessDriver.kext 
