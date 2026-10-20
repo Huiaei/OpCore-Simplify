@@ -58,6 +58,60 @@ class ResourceFetcher:
 
         return None
 
+    def _get_github_mirrors(self, resource_url):
+        """Return proxy mirrors for a GitHub-hosted download.
+
+        GitHub release assets (github.com/.../releases/download/...) are often
+        unreachable or extremely slow, while the raw.githubusercontent.com and
+        codeload paths still work. These public proxies serve the very same
+        file and are used as fallbacks only.
+        """
+        if "github.com" not in resource_url:
+            return []
+
+        proxies = (
+            "https://gh-proxy.com/",
+            "https://ghproxy.net/",
+            "https://ghfast.top/",
+            "https://mirror.ghproxy.com/",
+        )
+
+        return ["{}{}".format(proxy, resource_url) for proxy in proxies]
+
+    def _get_raw_mirrors(self, resource_url):
+        """Return mirrors for a raw.githubusercontent.com download.
+
+        The raw content host is regularly blocked or times out. jsDelivr
+        serves the exact same repository content through its own CDN.
+        """
+        if "raw.githubusercontent.com" not in resource_url:
+            return []
+
+        prefix = resource_url.split("raw.githubusercontent.com/", 1)[1]
+        parts = prefix.split("/")
+        if len(parts) < 3:
+            return []
+        owner_repo = "/".join(parts[:2])
+        rest = "/".join(parts[2:])
+        branch = ""
+        path = rest
+        if "/" in rest:
+            head, tail = rest.split("/", 1)
+            branch, path = head, tail
+
+        mirrors = []
+        if branch and path:
+            for cdn in ("https://cdn.jsdelivr.net/gh/", "https://fastly.jsdelivr.net/gh/", "https://gcore.jsdelivr.net/gh/"):
+                mirrors.append("{}{}@{}/{}".format(cdn, owner_repo, branch, path))
+        else:
+            for cdn in ("https://cdn.jsdelivr.net/gh/", "https://fastly.jsdelivr.net/gh/", "https://gcore.jsdelivr.net/gh/"):
+                mirrors.append("{}{}/{}".format(cdn, owner_repo, path))
+
+        for proxy in ("https://gh-proxy.com/", "https://ghproxy.net/"):
+            mirrors.append("{}{}".format(proxy, resource_url))
+
+        return mirrors
+
     def _get_dortania_mirrors(self):
         return [
             "https://raw.githubusercontent.com/dortania/build-repo/builds/latest.json",
@@ -183,7 +237,17 @@ class ResourceFetcher:
             
         print()
 
-    def download_and_save_file(self, resource_url, destination_path, sha256_hash=None):
+    def download_and_save_file(self, resource_url, destination_path, sha256_hash=None, mirrors=None):
+        candidate_urls = [resource_url] + list(mirrors or [])
+
+        for url in candidate_urls:
+            if self._download_with_retries(url, destination_path, sha256_hash):
+                return True
+
+        print("Failed to download {} after {} attempts.".format(resource_url, MAX_ATTEMPTS))
+        return False
+
+    def _download_with_retries(self, resource_url, destination_path, sha256_hash=None):
         attempt = 0
 
         while attempt < MAX_ATTEMPTS:
@@ -218,5 +282,4 @@ class ResourceFetcher:
             if attempt < MAX_ATTEMPTS:
                 print("Download failed for {}. Retrying...".format(resource_url))
 
-        print("Failed to download {} after {} attempts.".format(resource_url, MAX_ATTEMPTS))
         return False

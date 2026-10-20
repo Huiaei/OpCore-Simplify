@@ -161,3 +161,13 @@ cython_debug/
 
 *.DS_Store
 OCK_Files
+
+# Downloaded ACPI compiler binaries
+Scripts/iasl
+Scripts/iasl.exe
+Scripts/iasl-dev
+Scripts/iasl-stable
+Scripts/iasl-legacy
+Scripts/iasl-legacy.exe
+Scripts/acpidump
+Scripts/acpidump.exe

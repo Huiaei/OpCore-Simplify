@@ -270,6 +270,14 @@ class DSDT:
         # Newest releases may ship no Windows binaries at all (e.g. 20260930
         # only carries Unix artifacts plus a bare Linux "iasl"), so walk
         # releases newest-first and take the first usable Windows asset.
+        candidates = self.get_iasl_candidates()
+        return candidates[0] if candidates else None
+
+    def get_iasl_candidates(self):
+        # Collect every usable Windows iasl artifact, newest release first.
+        # A single candidate is not enough: GitHub release downloads are
+        # frequently blocked or time out, and different releases ship
+        # different layouts (zip archive vs. bare iasl.exe).
         try:
             tags = self.github.get_release_tags("acpica", "acpica")
         except Exception:
@@ -286,23 +294,28 @@ class DSDT:
                 except Exception:
                     continue
 
+        candidates = []
+
         for release in releases:
             for line in release.get("body", "").splitlines():
-                if "iasl" in line and ".zip" in line:
-                    return line.split("\"")[1]
+                if "iasl" in line and ".zip" in line and '"' in line:
+                    url = line.split("\"")[1]
+                    if url not in candidates:
+                        candidates.append(url)
 
             fallback_exe = None
             for asset in release.get("assets", []):
                 url = asset.get("url") or ""
                 basename = url.rsplit("/", 1)[-1].lower()
                 if basename.startswith("iasl-win-") and basename.endswith(".zip"):
-                    return url
-                if basename == "iasl.exe" and fallback_exe is None:
+                    if url not in candidates:
+                        candidates.append(url)
+                elif basename == "iasl.exe" and fallback_exe is None:
                     fallback_exe = url
-            if fallback_exe:
-                return fallback_exe
+            if fallback_exe and fallback_exe not in candidates:
+                candidates.append(fallback_exe)
 
-        return None
+        return candidates
 
     def check_iasl(self, legacy=False, try_downloading=True):
         if sys.platform == "win32":
@@ -328,9 +341,23 @@ class DSDT:
             elif sys.platform.startswith("linux"):
                 self._download_and_extract(temp,self.iasl_url_linux_legacy if legacy else self.iasl_url_linux)
             elif sys.platform == "win32":
-                iasl_url_windows = self.iasl_url_windows_legacy if legacy else self.get_latest_iasl()
-                if not iasl_url_windows: raise Exception("Could not get latest iasl for Windows")
-                self._download_and_extract(temp,iasl_url_windows)
+                if legacy:
+                    urls = [self.iasl_url_windows_legacy]
+                else:
+                    urls = self.get_iasl_candidates()
+                    if not urls:
+                        raise Exception("Could not get latest iasl for Windows")
+                last_error = None
+                for iasl_url_windows in urls:
+                    try:
+                        self._download_and_extract(temp, iasl_url_windows)
+                        last_error = None
+                        break
+                    except Exception as e:
+                        last_error = e
+                        print("Failed to obtain iasl from {}: {}".format(iasl_url_windows, e))
+                if last_error:
+                    raise last_error
             else: 
                 raise Exception("Unknown OS")
         except Exception as e:
@@ -348,7 +375,14 @@ class DSDT:
         zfile = os.path.basename(url)
         #print("Downloading {}".format(os.path.basename(url)))
         #self.dl.stream_to_file(url, os.path.join(ztemp,zfile), progress=False, headers=self.h)
-        self.fetcher.download_and_save_file(url, os.path.join(ztemp,zfile))
+        mirrors = self.fetcher._get_github_mirrors(url) + self.fetcher._get_raw_mirrors(url)
+        downloaded = self.fetcher.download_and_save_file(
+            url,
+            os.path.join(ztemp,zfile),
+            mirrors=mirrors
+        )
+        if not downloaded:
+            raise Exception("Could not download iasl from {}".format(url))
         search_dir = ztemp
         if zfile.lower().endswith(".zip"):
             print(" - Extracting")
