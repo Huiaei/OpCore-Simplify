@@ -44,7 +44,7 @@ class gatheringFiles:
 
     def fetch_latest_products_info(self, kexts, local_download_history):
         latest_products = {k: v.copy() for k, v in local_download_history.items()}
-        dortania_builds_data = self.fetcher.fetch_and_parse_content(self.dortania_builds_url, "json")
+        dortania_builds_data = self.fetcher.fetch_and_parse_content(self.dortania_builds_url, "json", mirrors=self.fetcher._get_dortania_mirrors()[1:]) or {}
         seen_repos = set()
 
         def add_product_info(products):
@@ -88,12 +88,17 @@ class gatheringFiles:
                     latest_release = self.github.get_latest_release(kext.github_repo.get("owner"), kext.github_repo.get("repo")) or {}
                     add_product_info(latest_release.get("assets"))
 
-        add_product_info({
-            "product_name": "OpenCorePkg",
-            "id": dortania_builds_data["OpenCorePkg"]["versions"][0]["release"]["id"], 
-            "url": dortania_builds_data["OpenCorePkg"]["versions"][0]["links"]["release"],
-            "sha256": dortania_builds_data["OpenCorePkg"]["versions"][0]["hashes"]["release"]["sha256"]
-        })
+        opencore_pkg = dortania_builds_data.get("OpenCorePkg")
+        if opencore_pkg:
+            add_product_info({
+                "product_name": "OpenCorePkg",
+                "id": opencore_pkg["versions"][0]["release"]["id"], 
+                "url": opencore_pkg["versions"][0]["links"]["release"],
+                "sha256": opencore_pkg["versions"][0]["hashes"]["release"]["sha256"]
+            })
+        else:
+            opencore_release = self.github.get_latest_release("acidanthera", "OpenCorePkg") or {}
+            add_product_info(opencore_release.get("assets"))
 
         return latest_products
     
