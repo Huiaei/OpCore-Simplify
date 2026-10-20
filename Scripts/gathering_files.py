@@ -264,7 +264,12 @@ class gatheringFiles:
                 return False
 
             zip_path = os.path.join(self.temporary_dir, product_name) + ".zip"
-            if not self.fetcher.download_and_save_file(product_download_url, zip_path, sha256_hash):
+            if not self.fetcher.download_and_save_file(
+                product_download_url,
+                zip_path,
+                sha256_hash,
+                mirrors=self.fetcher._get_github_mirrors(product_download_url)
+            ):
                 folder_is_valid, _ = self.integrity_checker.verify_folder_integrity(asset_dir, manifest_path)
                 if history_item is not None and folder_is_valid:
                     print("Using previously downloaded version of {}.".format(product_name))
@@ -296,7 +301,11 @@ class gatheringFiles:
                 print("Please wait for download OcBinaryData...")
                 print("from {}".format(self.ocbinarydata_url))
                 print("")
-                self.fetcher.download_and_save_file(self.ocbinarydata_url, oc_binary_data_zip_path)
+                self.fetcher.download_and_save_file(
+                    self.ocbinarydata_url,
+                    oc_binary_data_zip_path,
+                    mirrors=self.fetcher._get_github_mirrors(self.ocbinarydata_url)
+                )
 
                 if not os.path.exists(oc_binary_data_zip_path):
                     print("")
@@ -317,7 +326,11 @@ class gatheringFiles:
     
     def get_kernel_patches(self, patches_name, patches_url):
         try:
-            response = self.fetcher.fetch_and_parse_content(patches_url, "plist")
+            response = self.fetcher.fetch_and_parse_content(
+                patches_url,
+                "plist",
+                mirrors=self.fetcher._get_all_mirrors(patches_url)
+            )
 
             return response["Kernel"]["Patch"]
         except: 
@@ -387,7 +400,12 @@ class gatheringFiles:
         print("from {}".format(product_download_url))
         print("")
         
-        if not self.fetcher.download_and_save_file(product_download_url, destination_path, sha256_hash):
+        if not self.fetcher.download_and_save_file(
+            product_download_url,
+            destination_path,
+            sha256_hash,
+            mirrors=self.fetcher._get_github_mirrors(product_download_url)
+        ):
             manual_download_url = f"https://github.com/{REPO_OWNER}/{REPO_NAME}/releases/latest"
             print("Go to {} to download {} manually.".format(manual_download_url, PRODUCT_NAME))
             print("")

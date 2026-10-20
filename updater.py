@@ -34,6 +34,14 @@ class Updater:
     def get_latest_sha_version(self):
         print("Fetching latest version from GitHub...")
         try:
+            # The commits HTML page on github.com is frequently blocked or
+            # times out, so the REST API is queried first - it exposes the
+            # same information and is reachable through the same mirrors.
+            try:
+                return self.github.get_latest_commit_sha("lzhoang2801", "OpCore-Simplify")
+            except Exception:
+                pass
+
             commits = self.github.get_commits("lzhoang2801", "OpCore-Simplify")
             return commits["commitGroups"][0]["commits"][0]["oid"]
         except Exception as e:
@@ -53,7 +61,11 @@ class Updater:
             print("Step {}: Downloading update package...".format(self.current_step))
             print("  ", end="")
             file_path = os.path.join(self.temporary_dir, os.path.basename(self.download_repo_url))
-            self.fetcher.download_and_save_file(self.download_repo_url, file_path)
+            self.fetcher.download_and_save_file(
+                self.download_repo_url,
+                file_path,
+                mirrors=self.fetcher._get_github_mirrors(self.download_repo_url)
+            )
             
             if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
                 print("  Update package downloaded ({:.1f} KB)".format(os.path.getsize(file_path)/1024))

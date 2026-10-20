@@ -112,6 +112,18 @@ class ResourceFetcher:
 
         return mirrors
 
+    def _get_all_mirrors(self, resource_url):
+        """Return every applicable mirror for a download URL.
+
+        Combines the GitHub release-asset proxies with the raw-content CDN
+        mirrors, so callers do not need to know which host serves the file.
+        """
+        mirrors = []
+        for mirror in self._get_github_mirrors(resource_url) + self._get_raw_mirrors(resource_url):
+            if mirror not in mirrors:
+                mirrors.append(mirror)
+        return mirrors
+
     def _get_dortania_mirrors(self):
         return [
             "https://raw.githubusercontent.com/dortania/build-repo/builds/latest.json",

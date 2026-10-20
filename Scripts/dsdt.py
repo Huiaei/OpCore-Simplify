@@ -278,21 +278,34 @@ class DSDT:
         # A single candidate is not enough: GitHub release downloads are
         # frequently blocked or time out, and different releases ship
         # different layouts (zip archive vs. bare iasl.exe).
-        try:
-            tags = self.github.get_release_tags("acpica", "acpica")
-        except Exception:
-            tags = []
+        releases = []
 
-        if not tags:
-            # Fall back to the historical single-release lookup.
-            releases = [self.github.get_latest_release("acpica", "acpica") or {}]
-        else:
+        # One bulk request for every release - querying each tag on its own
+        # is slow and easily trips the API rate limit.
+        try:
+            releases = self.github.get_releases_normalized_via_api("acpica", "acpica", per_page=30)
+        except Exception:
             releases = []
-            for tag in tags:
+
+        if not isinstance(releases, list) or not releases:
+            releases = []
+            try:
+                tags = self.github.get_release_tags("acpica", "acpica")
+            except Exception:
+                tags = []
+
+            if not isinstance(tags, list) or not tags:
+                # Fall back to the historical single-release lookup.
                 try:
-                    releases.append(self.github.get_release_by_tag("acpica", "acpica", tag))
+                    releases = [self.github.get_latest_release("acpica", "acpica") or {}]
                 except Exception:
-                    continue
+                    releases = []
+            else:
+                for tag in tags:
+                    try:
+                        releases.append(self.github.get_release_by_tag("acpica", "acpica", tag))
+                    except Exception:
+                        continue
 
         candidates = []
 

@@ -34,7 +34,10 @@ class Github:
         response = self.fetcher.fetch_and_parse_content(url)
 
         if not response:
-            raise ValueError("Failed to fetch commit information from GitHub.")
+            # The HTML page is unreachable (blocked or timing out): fall
+            # back to the REST API and rebuild the historical payload
+            # shape so callers keep working unchanged.
+            return self._commits_via_api(owner, repo, branch, start_commit, after)
 
         payload = self.extract_payload(response)
 
@@ -55,12 +58,48 @@ class Github:
 
         return holder
 
+    def _commits_via_api(self, owner, repo, branch="main", start_commit=None, after=-1):
+        """Rebuild the commits payload using the GitHub REST API."""
+        url = "https://api.github.com/repos/{}/{}/commits?sha={}&per_page=30".format(owner, repo, branch)
+        data = self._api_get(url)
+
+        if not isinstance(data, list) or not data:
+            raise ValueError("Cannot find commit information for repository {} on branch {}.".format(repo, branch))
+
+        commits = []
+        for entry in data:
+            commit = entry.get("commit") or {}
+            author = commit.get("author") or {}
+            committer = commit.get("committer") or {}
+            commits.append({
+                "oid": entry.get("sha"),
+                "committedDate": (committer.get("date") or author.get("date") or "").split("T")[0],
+                "authoredDate": (author.get("date") or "").split("T")[0],
+                "message": (commit.get("message") or "").split("\n")[0],
+                "authors": [{"name": author.get("name", "")}],
+                "committers": [{"name": committer.get("name", "")}],
+            })
+
+        current_sha = commits[0]["oid"]
+
+        if after > -1 and start_commit:
+            # Keep only the commits that follow start_commit.
+            index = next((i for i, c in enumerate(commits) if c["oid"] == start_commit), None)
+            if index is not None:
+                commits = commits[index + 1:]
+
+        return {
+            "commitGroups": [{"commits": commits}],
+            "currentCommit": {"oid": current_sha},
+        }
+
     def get_release_tags(self, owner, repo):
         url = "https://github.com/{}/{}/releases".format(owner, repo)
         response = self.fetcher.fetch_and_parse_content(url)
 
         if not response:
-            return []
+            tags = [release.get("tag_name") for release in self.get_releases_via_api(owner, repo)]
+            return [tag for tag in tags if tag]
 
         tags = []
         for line in response.splitlines():
@@ -70,12 +109,99 @@ class Github:
                     tags.append(tag)
         return tags
 
+    # ------------------------------------------------------------------
+    # GitHub REST API helpers.
+    #
+    # The HTML pages on github.com are frequently blocked or time out
+    # (notably from mainland China), while api.github.com keeps working.
+    # Every API call therefore goes through the same mirror fallback as
+    # the release assets.
+    # ------------------------------------------------------------------
+
+    def _api_mirrors(self, url):
+        return [
+            "https://gh-proxy.com/{}".format(url),
+            "https://ghproxy.net/{}".format(url),
+            "https://ghfast.top/{}".format(url),
+        ]
+
+    def _api_get(self, url):
+        return self.fetcher.fetch_and_parse_content(url, "json", mirrors=self._api_mirrors(url))
+
+    def get_latest_commit_sha(self, owner, repo, branch="main"):
+        """Return the newest commit SHA of a branch using the REST API."""
+        url = "https://api.github.com/repos/{}/{}/commits?sha={}&per_page=1".format(owner, repo, branch)
+        data = self._api_get(url)
+
+        if isinstance(data, list) and data:
+            sha = data[0].get("sha")
+            if sha:
+                return sha
+
+        raise ValueError("Failed to fetch commit information for repository {} on branch {}.".format(repo, branch))
+
+    def get_releases_via_api(self, owner, repo, per_page=30):
+        """Return the releases of a repository as a list of dicts."""
+        url = "https://api.github.com/repos/{}/{}/releases?per_page={}".format(owner, repo, per_page)
+        data = self._api_get(url)
+
+        return data if isinstance(data, list) else []
+
+    def get_releases_normalized_via_api(self, owner, repo, per_page=30):
+        """Return every release of a repository, normalized, in one request.
+
+        Fetching each tag separately costs one request per release, which
+        is slow and easily hits the API rate limit. This bulk variant is
+        used when the caller only needs the list of releases.
+        """
+        releases = self.get_releases_via_api(owner, repo, per_page=per_page)
+
+        return [self._normalize_api_release(release) for release in releases]
+
+    def get_release_by_tag_via_api(self, owner, repo, tag_name):
+        """Return a single release (tag, body, assets) using the REST API."""
+
+        url = "https://api.github.com/repos/{}/{}/releases/tags/{}".format(owner, repo, tag_name)
+        data = self._api_get(url)
+
+        if not isinstance(data, dict) or "tag_name" not in data:
+            raise ValueError("Failed to fetch release information from GitHub.")
+
+        return self._normalize_api_release(data)
+
+    def _normalize_api_release(self, release):
+        assets = []
+        for asset in release.get("assets", []) or []:
+            url = asset.get("browser_download_url") or asset.get("url") or ""
+            name = asset.get("name") or url.rsplit("/", 1)[-1]
+            # Newer API responses expose a "digest" field of the form
+            # "sha256:<hex>"; older ones have no digest at all.
+            digest = asset.get("digest") or ""
+            sha256 = digest.split("sha256:")[-1].strip() if "sha256:" in digest else None
+            try:
+                asset_id = int(asset.get("id"))
+            except (TypeError, ValueError):
+                asset_id = asset.get("id")
+            assets.append({
+                "product_name": self.extract_asset_name(name),
+                "url": url,
+                "name": name,
+                "id": asset_id,
+                "sha256": sha256,
+            })
+
+        return {
+            "tag": release.get("tag_name"),
+            "body": release.get("body") or "",
+            "assets": assets,
+        }
+
     def get_release_by_tag(self, owner, repo, tag_name):
         tag_url = "https://github.com/{}/{}/releases/tag/{}".format(owner, repo, tag_name)
         response = self.fetcher.fetch_and_parse_content(tag_url)
 
         if not response:
-            raise ValueError("Failed to fetch release information from GitHub.")
+            return self.get_release_by_tag_via_api(owner, repo, tag_name)
 
         body = self._extract_body_content(response)
 
@@ -83,7 +209,7 @@ class Github:
         response = self.fetcher.fetch_and_parse_content(release_tag_url)
 
         if not response:
-            raise ValueError("Failed to fetch expanded assets information from GitHub.")
+            return self.get_release_by_tag_via_api(owner, repo, tag_name)
 
         assets = self._extract_assets(response)
 
@@ -98,7 +224,10 @@ class Github:
         response = self.fetcher.fetch_and_parse_content(url)
 
         if not response:
-            raise ValueError("Failed to fetch release information from GitHub.")
+            releases = self.get_releases_via_api(owner, repo, per_page=1)
+            if not releases:
+                raise ValueError("Failed to fetch release information from GitHub.")
+            return self._normalize_api_release(releases[0])
 
         tag_name = self._extract_tag_name(response)
         body = self._extract_body_content(response)
@@ -107,7 +236,10 @@ class Github:
         response = self.fetcher.fetch_and_parse_content(release_tag_url)
 
         if not response:
-            raise ValueError("Failed to fetch expanded assets information from GitHub.")
+            releases = self.get_releases_via_api(owner, repo, per_page=1)
+            if not releases:
+                raise ValueError("Failed to fetch expanded assets information from GitHub.")
+            return self._normalize_api_release(releases[0])
 
         assets = self._extract_assets(response)
 
