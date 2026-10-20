@@ -7,13 +7,21 @@ import tempfile
 import shutil
 
 class Updater:
+    # The repository this script updates itself from.  A fork must point
+    # this at its own repository: updating from upstream would silently
+    # overwrite the fork's adapted files with the upstream versions.
+    REPO_OWNER = "Huiaei"
+    REPO_NAME = "OpCore-Simplify"
+    BRANCH = "main"
+
     def __init__(self):
         self.github = github.Github()
         self.fetcher = resource_fetcher.ResourceFetcher()
         self.run = run.Run().run
         self.utils = utils.Utils()
         self.sha_version = os.path.join(os.path.dirname(os.path.realpath(__file__)), "sha_version.txt")
-        self.download_repo_url = "https://github.com/lzhoang2801/OpCore-Simplify/archive/refs/heads/main.zip"
+        self.download_repo_url = "https://github.com/{}/{}/archive/refs/heads/{}.zip".format(
+            self.REPO_OWNER, self.REPO_NAME, self.BRANCH)
         self.temporary_dir = tempfile.mkdtemp()
         self.current_step = 0
 
@@ -38,11 +46,11 @@ class Updater:
             # times out, so the REST API is queried first - it exposes the
             # same information and is reachable through the same mirrors.
             try:
-                return self.github.get_latest_commit_sha("lzhoang2801", "OpCore-Simplify")
+                return self.github.get_latest_commit_sha(self.REPO_OWNER, self.REPO_NAME, self.BRANCH)
             except Exception:
                 pass
 
-            commits = self.github.get_commits("lzhoang2801", "OpCore-Simplify")
+            commits = self.github.get_commits(self.REPO_OWNER, self.REPO_NAME, self.BRANCH)
             return commits["commitGroups"][0]["commits"][0]["oid"]
         except Exception as e:
             print("Error fetching latest SHA version: {}".format(str(e)))
@@ -86,19 +94,60 @@ class Updater:
         self.current_step += 1
         print("Step {}: Updating files...".format(self.current_step))
         try:
-            target_dir = os.path.join(self.temporary_dir, "OpCore-Simplify-main")
+            target_dir = os.path.join(self.temporary_dir, "{}-{}".format(self.REPO_NAME, self.BRANCH))
             if not os.path.exists(target_dir):
-                target_dir = os.path.join(self.temporary_dir, "main", "OpCore-Simplify-main")
-                
+                target_dir = os.path.join(self.temporary_dir, self.BRANCH, "{}-{}".format(self.REPO_NAME, self.BRANCH))
+
+            if not os.path.exists(target_dir):
+                # Fall back to any extracted directory that carries the
+                # entry point - the archive layout depends on the branch
+                # name and on how the zip was unpacked.
+                for root, dirs, files in os.walk(self.temporary_dir):
+                    if "OpCore-Simplify.py" in files:
+                        target_dir = root
+                        break
+
             if not os.path.exists(target_dir):
                 print("  Could not locate extracted files directory")
                 return False
                 
             file_paths = self.utils.find_matching_paths(target_dir, type_filter="file")
-            
+
             total_files = len(file_paths)
             print("  Found {} files to update".format(total_files))
-            
+
+            # A fork usually carries local adaptations that the update
+            # package does not contain.  Overwriting them silently would
+            # undo the fork's work, so the differing files are listed and
+            # the user decides.
+            local_root = os.path.dirname(os.path.realpath(__file__))
+            differing = []
+            for path, type in file_paths:
+                source = os.path.join(target_dir, path)
+                destination = source.replace(target_dir, local_root)
+                if not os.path.exists(destination):
+                    continue
+                try:
+                    if open(source, "rb").read() != open(destination, "rb").read():
+                        differing.append(os.path.relpath(destination, local_root))
+                except Exception:
+                    differing.append(os.path.relpath(destination, local_root))
+
+            if differing:
+                print("")
+                print("  The update package differs from your local files in {} file(s):".format(len(differing)))
+                for name in sorted(differing)[:20]:
+                    print("    - {}".format(name))
+                if len(differing) > 20:
+                    print("    ... and {} more".format(len(differing) - 20))
+                print("")
+                answer = self.utils.request_input("  Overwrite your local files? (yes/No): ").strip().lower()
+                if answer != "yes":
+                    print("")
+                    print("  Update aborted - your local files were left untouched.")
+                    return False
+                print("")
+
             updated_count = 0
             for index, (path, type) in enumerate(file_paths, start=1):
                 source = os.path.join(target_dir, path)

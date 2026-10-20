@@ -171,3 +171,6 @@ Scripts/iasl-legacy
 Scripts/iasl-legacy.exe
 Scripts/acpidump
 Scripts/acpidump.exe
+
+# Updater version marker (written by updater.py)
+sha_version.txt
