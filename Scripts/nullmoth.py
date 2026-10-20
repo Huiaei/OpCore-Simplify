@@ -87,9 +87,9 @@ class NullMoth:
     # pinned entry below is only the last verified download, used when the
     # release API is unreachable; the checksum still has to match.
     PACKAGE = {
-        "name": "nullmoth-nvidia-2.3.7.tar.gz",
-        "url": "https://github.com/{}/releases/download/v2.3.7/nullmoth-nvidia-2.3.7.tar.gz".format(REPO),
-        "sha256": "237675011b81d60f8473a4f53ad08407e659e4a9fcf0dc571c5c15de579e39e6",
+        "name": "nullmoth-nvidia-2.4.3.tar.gz",
+        "url": "https://github.com/{}/releases/download/v2.4.3/nullmoth-nvidia-2.4.3.tar.gz".format(REPO),
+        "sha256": "e95a6a5d0ab8727bf88b77ddb77140fedeff845a294758d4b52761a40d0a3632",
     }
 
     RELEASE_API = "https://api.github.com/repos/{}/releases/latest".format(REPO)
