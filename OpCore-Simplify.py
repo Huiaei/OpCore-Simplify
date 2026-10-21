@@ -275,6 +275,14 @@ class OCPE:
                     config_data["ACPI"]["Add"].extend(acpi_load.get("Add", []))
                     config_data["ACPI"]["Delete"].extend(acpi_load.get("Delete", []))
                     config_data["ACPI"]["Patch"].extend(acpi_load.get("Patch", []))
+
+            # An SSDT that failed to compile leaves no .aml behind.  OpenCore
+            # would only log a missing file, so drop those entries entirely.
+            acpi_directory = self.ac.acpi_directory
+            config_data["ACPI"]["Add"] = [
+                entry for entry in config_data["ACPI"]["Add"]
+                if os.path.exists(os.path.join(acpi_directory, entry.get("Path", "")))
+            ]
         
         config_data["ACPI"]["Patch"].extend(self.ac.dsdt_patches)
         config_data["ACPI"]["Patch"] = self.ac.apply_acpi_patches(config_data["ACPI"]["Patch"])
