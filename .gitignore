@@ -174,3 +174,7 @@ Scripts/acpidump.exe
 
 # Updater version marker (written by updater.py)
 sha_version.txt
+
+# Downloaded hardware sniffer and exported hardware reports
+Scripts/Hardware-Sniffer-CLI.exe
+SysReport/
