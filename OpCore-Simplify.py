@@ -538,6 +538,10 @@ if __name__ == '__main__':
     while True:
         try:
             o.main()
+        except EOFError:
+            # No console to read from (output piped, input redirected): leave
+            # quietly instead of dumping a traceback at the user.
+            break
         except Exception as e:
             o.u.head("An Error Occurred")
             print("")
@@ -551,4 +555,7 @@ if __name__ == '__main__':
             if LOG_PATH:
                 print("Log file: {}".format(LOG_PATH))
                 print("")
-            o.u.request_input()
+            try:
+                o.u.request_input()
+            except EOFError:
+                break
