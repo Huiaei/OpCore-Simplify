@@ -175,16 +175,31 @@ class Utils:
         
         return user_response
 
+    def safe_glyph(self, glyph, fallback):
+        """Return glyph if the console can print it, otherwise fallback.
+
+        A Chinese Windows console (cp936) has the box-drawing characters but
+        not the bullet, and an English one (cp437) has neither - printing an
+        unencodable glyph raises UnicodeEncodeError and kills the program.
+        """
+        encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+        try:
+            glyph.encode(encoding)
+        except (UnicodeEncodeError, LookupError):
+            return fallback
+        return glyph
+
     def progress_bar(self, title, steps, current_step_index, done=False):
         self.head(title)
         print("")
+        tick = self.safe_glyph("✓", "+")
         if done:
             for step in steps:
-                print("  [\033[92m✓\033[0m] {}".format(step))
+                print("  [\033[92m{}\033[0m] {}".format(tick, step))
         else:
             for i, step in enumerate(steps):
                 if i < current_step_index:
-                    print("  [\033[92m✓\033[0m] {}".format(step))
+                    print("  [\033[92m{}\033[0m] {}".format(tick, step))
                 elif i == current_step_index:
                     print("  [\033[1;93m>\033[0m] {}...".format(step))
                 else:

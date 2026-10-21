@@ -12,6 +12,7 @@ from Scripts import report_validator
 from Scripts import run
 from Scripts import smbios
 from Scripts import utils
+from Scripts import logger
 import updater
 import os
 import sys
@@ -19,6 +20,14 @@ import re
 import shutil
 import traceback
 import time
+
+try:
+    LOG_PATH = logger.enable()
+except OSError:
+    # Logging is a convenience - never let it stop the program from starting.
+    # The console still has to survive an unencodable glyph, though.
+    logger.make_console_safe()
+    LOG_PATH = None
 
 class OCPE:
     def __init__(self):
@@ -521,6 +530,10 @@ if __name__ == '__main__':
     if update_flag:
         os.execv(sys.executable, ['python3'] + sys.argv)
 
+    if LOG_PATH:
+        print("Log file: {}".format(LOG_PATH))
+        print("")
+
     o = OCPE()
     while True:
         try:
@@ -528,5 +541,14 @@ if __name__ == '__main__':
         except Exception as e:
             o.u.head("An Error Occurred")
             print("")
-            print(traceback.format_exc())
+            # Printing the traceback must not raise a second time: on a cp936
+            # console the offending source line can hold an unprintable glyph,
+            # and then the user sees the box above and nothing else.
+            try:
+                print(traceback.format_exc())
+            except Exception:
+                print("{}: {}".format(type(e).__name__, e))
+            if LOG_PATH:
+                print("Log file: {}".format(LOG_PATH))
+                print("")
             o.u.request_input()

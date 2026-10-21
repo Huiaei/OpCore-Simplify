@@ -283,15 +283,17 @@ class KextMaestro:
                     print("1. \033[1mlaobamac AirportItlwm\033[0m - Native WiFi on Sequoia 15.2+ and Tahoe without OCLP root patches")
                     print("")
                 print("{}. \033[1mAirportItlwm\033[0m - Uses native WiFi settings menu".format(2 if native_fork_available else 1))
-                print("   • Provides Handoff, Universal Clipboard, Location Services, Instant Hotspot support")
-                print("   • Supports enterprise-level security")
+                # cp936 and cp437 consoles cannot print a bullet at all.
+                bullet = self.utils.safe_glyph("\u2022", "-")
+                print("   {} Provides Handoff, Universal Clipboard, Location Services, Instant Hotspot support".format(bullet))
+                print("   {} Supports enterprise-level security".format(bullet))
                 if darwin_major >= 24:
-                    print("   • Requires OCLP root patches on Sequoia and Tahoe but may cause issues")
+                    print("   {} Requires OCLP root patches on Sequoia and Tahoe but may cause issues".format(bullet))
                 print("")
                 print("{}. \033[1mitlwm\033[0m - More stable overall".format(len(wifi_options)))
-                print("   • Works with HeliPort app instead of native WiFi settings menu")
-                print("   • No Apple Continuity features and enterprise-level security")
-                print("   • Can connect to Hidden Networks")
+                print("   {} Works with HeliPort app instead of native WiFi settings menu".format(bullet))
+                print("   {} No Apple Continuity features and enterprise-level security".format(bullet))
+                print("   {} Can connect to Hidden Networks".format(bullet))
                 print("")
                 recommended_option = 1 if native_fork_available or darwin_major < 23 else 2
                 if "Beta" in os_data.get_macos_name_by_darwin(macos_version) and not native_fork_available:
