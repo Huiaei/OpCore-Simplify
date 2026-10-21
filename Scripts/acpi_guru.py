@@ -288,10 +288,32 @@ class ACPIGuru:
         # Helper to check conditions for when we have valid tables
         return self.dsdt and ((allow_any and self.acpi.acpi_tables) or (not allow_any and self.acpi.get_dsdt_or_only()))
 
+    def _dump_tables_automatically(self):
+        # Best effort dump of the firmware tables so the user is not asked for
+        # an ACPI folder they may not have.  On Windows this uses the Win32
+        # firmware table API, which needs neither a driver nor admin rights.
+        if os.name != "nt":
+            return False
+        try:
+            report_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), "SysReport")
+            tables_dir = os.path.join(report_dir, "ACPI")
+            if not self.acpi.dump_tables(tables_dir):
+                return False
+            self.read_acpi_tables(tables_dir)
+            return bool(self.acpi.acpi_tables)
+        except Exception as e:
+            print(" - {}".format(e))
+            return False
+
     def ensure_dsdt(self, allow_any=False):
         if self._ensure_dsdt(allow_any=allow_any):
             # Got it already
             return True
+        # Nothing loaded yet - try to dump the tables before bothering the user
+        if self._dump_tables_automatically():
+            self.dsdt = self.acpi.get_dsdt_or_only()
+            if self._ensure_dsdt(allow_any=allow_any):
+                return True
         # Need to prompt
         self.select_acpi_tables()
         self.dsdt = self.acpi.get_dsdt_or_only()

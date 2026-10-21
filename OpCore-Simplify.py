@@ -70,6 +70,9 @@ class OCPE:
                     "args":[hardware_sniffer, "-e", "-o", report_dir]
                 })
 
+                report_path = os.path.join(report_dir, "Report.json")
+                acpitables_dir = os.path.join(report_dir, "ACPI")
+
                 if output[-1] != 0:
                     error_code = output[-1]
                     if error_code == 3:
@@ -81,21 +84,32 @@ class OCPE:
                     else:
                         error_message = "Unknown error."
 
-                    print("")
-                    print("Could not export the hardware report. {}".format(error_message))
-                    print("Please try again or using Hardware Sniffer manually.")
-                    print("")
-                    self.u.request_input()
-                    continue
-                else:
-                    report_path = os.path.join(report_dir, "Report.json")
-                    acpitables_dir = os.path.join(report_dir, "ACPI")
+                    # Hardware Sniffer dumps the ACPI tables through its own
+                    # kernel driver, which Secure Boot or memory integrity can
+                    # refuse to load.  The report itself may still be complete,
+                    # so try to dump the tables ourselves rather than throwing
+                    # the whole export away.
+                    recovered = False
+                    if error_code == 5 and os.path.exists(report_path):
+                        print("")
+                        print("\033[1;93mHardware Sniffer could not dump the ACPI tables.\033[0m")
+                        print("Trying the Windows firmware table API instead...")
+                        print("")
+                        recovered = bool(self.ac.acpi.dump_tables(acpitables_dir))
 
-                    report_data = self.u.read_file(report_path)
-                    self.ac.read_acpi_tables(acpitables_dir)
-                    
-                    return report_path, report_data
-                
+                    if not recovered:
+                        print("")
+                        print("Could not export the hardware report. {}".format(error_message))
+                        print("Please try again or using Hardware Sniffer manually.")
+                        print("")
+                        self.u.request_input()
+                        continue
+
+                report_data = self.u.read_file(report_path)
+                self.ac.read_acpi_tables(acpitables_dir)
+
+                return report_path, report_data
+
             path = self.u.normalize_path(user_input)
             
             is_valid, errors, warnings, data = self.v.validate_report(path)

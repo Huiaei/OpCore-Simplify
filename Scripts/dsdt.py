@@ -414,6 +414,116 @@ class DSDT:
                 print("   - Copying to {} directory".format(os.path.basename(script_dir)))
                 shutil.copy(os.path.join(search_dir,x), os.path.join(script_dir,x))
 
+    def _dump_tables_with_acpidump(self, target, res):
+        # Dump to the target folder using acpidump.exe
+        print("Dumping tables to {}...".format(res))
+        cwd = os.getcwd()
+        os.chdir(res)
+        out = self.r.run({"args":[target,"-b"]})
+        os.chdir(cwd)
+        if out[2] != 0:
+            print(" - {}".format(out[1]))
+            return False
+        # Make sure we have a DSDT
+        if not next((x for x in os.listdir(res) if x.lower().startswith("dsdt.")),None):
+            # We need to try and dump the DSDT individually - this sometimes
+            # happens on older Windows installs or odd OEM machines
+            print(" - DSDT not found - dumping by signature...")
+            os.chdir(res)
+            out = self.r.run({"args":[target,"-b","-n","DSDT"]})
+            os.chdir(cwd)
+            if out[2] != 0:
+                print(" - {}".format(out[1]))
+                return False
+        # Iterate the dumped files and ensure the names are uppercase, and the
+        # extension used is .aml, not the default .dat
+        print("Updating names...")
+        for f in os.listdir(res):
+            new_name = f.upper()
+            if new_name.endswith(".DAT"):
+                new_name = new_name[:-4]+".aml"
+            if new_name != f:
+                # Something changed - print it and rename it
+                try:
+                    os.rename(os.path.join(res,f),os.path.join(res,new_name))
+                except Exception as e:
+                    print(" - {} -> {} failed: {}".format(f,new_name,e))
+        return bool(next((x for x in os.listdir(res) if x.lower().startswith("dsdt.")),None))
+
+    def _split_acpi_table_blob(self, data):
+        # GetSystemFirmwareTable() returns every table that shares the requested
+        # signature as a single blob (all SSDTs, for instance), so walk the ACPI
+        # header - 4 byte signature followed by a little endian length - to cut
+        # it back into individual tables.
+        tables = []
+        offset = 0
+        while offset + 36 <= len(data):
+            length = int.from_bytes(data[offset + 4:offset + 8], "little")
+            if length < 36 or offset + length > len(data):
+                break
+            tables.append(data[offset:offset + length])
+            offset += length
+        return tables
+
+    def dump_tables_via_windows_api(self, output):
+        # Fallback for machines where neither acpidump.exe nor Hardware
+        # Sniffer's own ACPI dump works - both of those need a kernel driver,
+        # which Secure Boot or memory integrity can refuse to load.
+        # EnumSystemFirmwareTables()/GetSystemFirmwareTable() are plain Win32
+        # calls: no driver, no admin rights, no external binary.
+        if os.name != "nt":
+            return None
+        try:
+            import ctypes
+            kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        except Exception as e:
+            print(" - Could not load kernel32: {}".format(e))
+            return None
+
+        provider = int.from_bytes(b"ACPI", "little")
+        kernel32.EnumSystemFirmwareTables.argtypes = [ctypes.c_ulong, ctypes.c_void_p, ctypes.c_ulong]
+        kernel32.EnumSystemFirmwareTables.restype = ctypes.c_ulong
+        kernel32.GetSystemFirmwareTable.argtypes = [ctypes.c_ulong, ctypes.c_ulong, ctypes.c_void_p, ctypes.c_ulong]
+        kernel32.GetSystemFirmwareTable.restype = ctypes.c_ulong
+
+        size = kernel32.EnumSystemFirmwareTables(provider, None, 0)
+        if not size:
+            print(" - EnumSystemFirmwareTables failed (error {})".format(ctypes.get_last_error()))
+            return None
+        signature_buffer = ctypes.create_string_buffer(size)
+        if not kernel32.EnumSystemFirmwareTables(provider, signature_buffer, size):
+            print(" - EnumSystemFirmwareTables failed (error {})".format(ctypes.get_last_error()))
+            return None
+        signatures = [bytes(signature_buffer.raw[i:i + 4]) for i in range(0, size - size % 4, 4)]
+
+        res = self.check_output(output)
+        print("Dumping tables to {}...".format(res))
+        written = 0
+        for signature in signatures:
+            table_id = int.from_bytes(signature, "little")
+            label = signature.decode("ascii", "replace").strip().upper() or "ACPI"
+            table_size = kernel32.GetSystemFirmwareTable(provider, table_id, None, 0)
+            if not table_size:
+                print(" - {}: not available".format(label))
+                continue
+            table_buffer = ctypes.create_string_buffer(table_size)
+            if not kernel32.GetSystemFirmwareTable(provider, table_id, table_buffer, table_size):
+                print(" - {}: read failed (error {})".format(label, ctypes.get_last_error()))
+                continue
+            for index, table in enumerate(self._split_acpi_table_blob(table_buffer.raw[:table_size])):
+                name = label + (str(index) if index else "")
+                with open(os.path.join(res, name + ".aml"), "wb") as f:
+                    f.write(table)
+                written += 1
+
+        if not written:
+            print(" - No ACPI tables could be read through the Windows API.")
+            return None
+        if not next((x for x in os.listdir(res) if x.lower().startswith("dsdt.")), None):
+            print(" - DSDT not found in the dumped tables.")
+            return None
+        return res
+
     def dump_tables(self, output, disassemble=False):
         # Helper to dump all ACPI tables to the specified
         # output path
@@ -422,47 +532,21 @@ class DSDT:
         res = self.check_output(output)
         if os.name == "nt":
             target = os.path.join(os.path.dirname(os.path.realpath(__file__)),"acpidump.exe")
+            dumped = False
             if os.path.exists(target):
-                # Dump to the target folder
-                print("Dumping tables to {}...".format(res))
-                cwd = os.getcwd()
-                os.chdir(res)
-                out = self.r.run({"args":[target,"-b"]})
-                os.chdir(cwd)
-                if out[2] != 0:
-                    print(" - {}".format(out[1]))
-                    return
-                # Make sure we have a DSDT
-                if not next((x for x in os.listdir(res) if x.lower().startswith("dsdt.")),None):
-                    # We need to try and dump the DSDT individually - this sometimes
-                    # happens on older Windows installs or odd OEM machines
-                    print(" - DSDT not found - dumping by signature...")
-                    os.chdir(res)
-                    out = self.r.run({"args":[target,"-b","-n","DSDT"]})
-                    os.chdir(cwd)
-                    if out[2] != 0:
-                        print(" - {}".format(out[1]))
-                        return
-                # Iterate the dumped files and ensure the names are uppercase, and the
-                # extension used is .aml, not the default .dat
-                print("Updating names...")
-                for f in os.listdir(res):
-                    new_name = f.upper()
-                    if new_name.endswith(".DAT"):
-                        new_name = new_name[:-4]+".aml"
-                    if new_name != f:
-                        # Something changed - print it and rename it
-                        try:
-                            os.rename(os.path.join(res,f),os.path.join(res,new_name))
-                        except Exception as e:
-                            print(" - {} -> {} failed: {}".format(f,new_name,e))
-                print("Dump successful!")
-                if disassemble:
-                    return self.load(res)
-                return res
+                dumped = self._dump_tables_with_acpidump(target, res)
             else:
                 print("Failed to locate acpidump.exe")
-                return
+            if not dumped:
+                print("")
+                print("Falling back to the Windows firmware table API...")
+                res = self.dump_tables_via_windows_api(output)
+                if not res:
+                    return
+            print("Dump successful!")
+            if disassemble:
+                return self.load(res)
+            return res
         elif sys.platform.startswith("linux"):
             table_dir = "/sys/firmware/acpi/tables"
             if not os.path.isdir(table_dir):
