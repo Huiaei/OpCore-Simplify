@@ -524,6 +524,30 @@ class DSDT:
             return None
         return res
 
+    def _copy_table_file(self, source, target):
+        # /sys/firmware/acpi/tables is usually world readable, so a plain copy
+        # is enough - sudo is only needed when the kernel actually restricts it,
+        # and it is not installed at all on some distributions (WSL, Alpine).
+        try:
+            shutil.copyfile(source, target)
+            return True
+        except PermissionError:
+            pass
+        except OSError as e:
+            print(" - {}: {}".format(os.path.basename(source), e))
+            return False
+        print(" - Retrying {} with sudo...".format(os.path.basename(source)))
+        out = self.r.run({"args":["sudo","cp",source,target]})
+        if out[2] != 0:
+            print(" - {}".format(out[1].strip() or "sudo is not available"))
+            return False
+        if hasattr(os, "geteuid") and os.geteuid() != 0:
+            out = self.r.run({"args":["sudo","chown",getpass.getuser(),target]})
+            if out[2] != 0:
+                print(" - {}".format(out[1].strip() or "chown failed"))
+                return False
+        return True
+
     def dump_tables(self, output, disassemble=False):
         # Helper to dump all ACPI tables to the specified
         # output path
@@ -558,13 +582,7 @@ class DSDT:
                 if not os.path.isfile(os.path.join(table_dir,table)):
                     continue # We only want files
                 target_path = os.path.join(res,table.upper()+".aml")
-                out = self.r.run({"args":["sudo","cp",os.path.join(table_dir,table),target_path]})
-                if out[2] != 0:
-                    print(" - {}".format(out[1]))
-                    return
-                out = self.r.run({"args":["sudo","chown",getpass.getuser(), target_path]})
-                if out[2] != 0:
-                    print(" - {}".format(out[1]))
+                if not self._copy_table_file(os.path.join(table_dir,table), target_path):
                     return
             print("Dump successful!")
             if disassemble:

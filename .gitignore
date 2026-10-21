@@ -178,3 +178,9 @@ sha_version.txt
 # Downloaded hardware sniffer and exported hardware reports
 Scripts/Hardware-Sniffer-CLI.exe
 SysReport/
+
+# Built EFI output and the downloaded macserial tool
+Results/
+Scripts/macserial
+Scripts/macserial.exe
+Scripts/macserial.linux

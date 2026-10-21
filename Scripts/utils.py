@@ -150,13 +150,19 @@ class Utils:
         return major, minor, patch
     
     def open_folder(self, folder_path):
-        if os.name == 'posix':
-            if 'darwin' in os.uname().sysname.lower():
-                subprocess.run(['open', folder_path])
-            else:
-                subprocess.run(['xdg-open', folder_path])
-        elif os.name == 'nt':
-            os.startfile(folder_path)
+        # Opening a file manager is a convenience: a headless session (SSH, WSL,
+        # a container) has no opener at all, and failing there must not abort a
+        # build that has already finished.
+        try:
+            if os.name == 'posix':
+                if 'darwin' in os.uname().sysname.lower():
+                    subprocess.run(['open', folder_path])
+                else:
+                    subprocess.run(['xdg-open', folder_path])
+            elif os.name == 'nt':
+                os.startfile(folder_path)
+        except (OSError, subprocess.SubprocessError):
+            print(" - Could not open {} automatically.".format(folder_path))
 
     def request_input(self, prompt="Press Enter to continue..."):
         if sys.version_info[0] < 3:

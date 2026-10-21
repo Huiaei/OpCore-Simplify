@@ -9,6 +9,7 @@ import sys
 import gzip
 import zlib
 import time
+import http.client
 
 if sys.version_info >= (3, 0):
     from urllib.request import urlopen, Request
@@ -25,6 +26,10 @@ class ResourceFetcher:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
         }
         self.buffer_size = 16 * 1024
+        # Reading from the slow mirror proxies can stall for far longer than
+        # the 10s used for plain API/page fetches - a short timeout there would
+        # abort every large kext download.
+        self.download_timeout = 30
         self.ssl_context = self.create_ssl_context()
         self.integrity_checker = integrity_checker.IntegrityChecker()
         self.utils = utils.Utils()
@@ -41,10 +46,12 @@ class ResourceFetcher:
             ssl_context = ssl._create_unverified_context()
         return ssl_context
 
-    def _make_request(self, resource_url, timeout=10):
+    def _make_request(self, resource_url, timeout=10, extra_headers=None):
         try:
             headers = dict(self.request_headers)
             headers["Accept-Encoding"] = "gzip, deflate"
+            if extra_headers:
+                headers.update(extra_headers)
             
             return urlopen(Request(resource_url, headers=headers), timeout=timeout, context=self.ssl_context)
         except socket.timeout as e:
@@ -136,11 +143,12 @@ class ResourceFetcher:
 
     def fetch_and_parse_content(self, resource_url, content_type=None, mirrors=None):
         candidate_urls = [resource_url] + list(mirrors or [])
-        attempt = 0
         response = None
+        content = None
         tried = []
 
         for url in candidate_urls:
+            attempt = 0
             while attempt < MAX_ATTEMPTS:
                 attempt += 1
                 response = self._make_request(url)
@@ -149,23 +157,33 @@ class ResourceFetcher:
                     print("Failed to fetch content from {}. Retrying...".format(url))
                     continue
 
-                if response.getcode() == 200:
-                    break
+                try:
+                    if response.getcode() != 200:
+                        raise URLError("HTTP {}".format(response.getcode()))
+                    # The body read happens after the headers arrived, so it can
+                    # still stall or drop halfway through a large page - treat
+                    # that as a failed attempt instead of letting it escape.
+                    content = response.read()
+                except (OSError, http.client.HTTPException, URLError) as e:
+                    print("Failed to read content from {}: {}. Retrying...".format(url, e))
+                    content = None
+                    try:
+                        response.close()
+                    except Exception:
+                        pass
+                    continue
 
-                attempt += 1
+                break
 
-            if response and response.getcode() == 200:
+            if content is not None:
                 break
 
             response = None
-            attempt = 0
             tried.append(url)
 
-        if not response:
+        if content is None:
             print("Failed to fetch content from {} (tried: {})".format(resource_url, ", ".join(tried) or resource_url))
             return None
-        
-        content = response.read()
 
         if response.info().get("Content-Encoding") == "gzip" or content.startswith(b"\x1f\x8b"):
             try:
@@ -257,6 +275,11 @@ class ResourceFetcher:
                 return True
 
         print("Failed to download {} after {} attempts.".format(resource_url, MAX_ATTEMPTS))
+        if os.path.exists(destination_path):
+            try:
+                os.remove(destination_path)
+            except OSError:
+                pass
         return False
 
     def _download_with_retries(self, resource_url, destination_path, sha256_hash=None):
@@ -264,14 +287,47 @@ class ResourceFetcher:
 
         while attempt < MAX_ATTEMPTS:
             attempt += 1
-            response = self._make_request(resource_url)
+
+            # Keep whatever arrived last time and ask for the rest of it - the
+            # public proxy mirrors drop the connection every few megabytes, and
+            # restarting a 10 MB file from zero never finishes on a slow link.
+            resume_from = os.path.getsize(destination_path) if os.path.exists(destination_path) else 0
+            extra_headers = {"Range": "bytes={}-".format(resume_from)} if resume_from else None
+
+            response = self._make_request(resource_url, timeout=self.download_timeout, extra_headers=extra_headers)
 
             if not response:
                 print("Failed to fetch content from {}. Retrying...".format(resource_url))
+                if resume_from and os.path.exists(destination_path):
+                    # The range request itself was rejected (416 and friends) -
+                    # drop the partial file so the next attempt starts clean.
+                    try:
+                        os.remove(destination_path)
+                    except OSError:
+                        pass
                 continue
 
-            with open(destination_path, "wb") as local_file:
-                self._download_with_progress(response, local_file)
+            append = False
+            if resume_from:
+                if response.getcode() == 206:
+                    append = True
+                    print("Resuming download at {} bytes...".format(resume_from))
+                else:
+                    print("Server ignored the range request - starting over.")
+
+            try:
+                with open(destination_path, "ab" if append else "wb") as local_file:
+                    self._download_with_progress(response, local_file)
+            except (OSError, http.client.HTTPException) as e:
+                # A stall or drop halfway through is not fatal - keep the bytes
+                # that did arrive and resume from there on the next attempt.
+                try:
+                    response.close()
+                except Exception:
+                    pass
+                print("")
+                print("Download interrupted ({}). Retrying...".format(e))
+                continue
 
             if os.path.exists(destination_path) and os.path.getsize(destination_path) > 0:
                 if sha256_hash:
@@ -288,7 +344,7 @@ class ResourceFetcher:
                     print("No SHA256 hash provided. Downloading file without verification.")
                     return True
             
-            if os.path.exists(destination_path):
+            if os.path.exists(destination_path) and os.path.getsize(destination_path) == 0:
                 os.remove(destination_path)
 
             if attempt < MAX_ATTEMPTS:

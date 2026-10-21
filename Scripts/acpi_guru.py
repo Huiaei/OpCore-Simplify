@@ -1494,6 +1494,13 @@ DefinitionBlock ("", "SSDT", 2, "ZPSS", "EC", 0x00001000)
         })
         
         if output[-1] != 0:
+            # The source would otherwise be left behind in the finished EFI,
+            # where OpenCore never loads it and it only confuses people.
+            print(" - Could not compile {}.aml - the SSDT will be skipped.".format(ssdt_name))
+            try:
+                os.remove(dsl_path)
+            except OSError:
+                pass
             return False
         else:
             os.remove(dsl_path)
