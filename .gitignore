@@ -184,3 +184,7 @@ Results/
 Scripts/macserial
 Scripts/macserial.exe
 Scripts/macserial.linux
+
+# Stray copies of the downloaded ACPI tools at the repository root
+/acpidump.exe
+/iasl.exe
