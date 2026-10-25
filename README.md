@@ -189,6 +189,22 @@ system_profiler SPDisplaysDataType | head -20   # your card, Metal: supported
 The [1401](https://github.com/nullmoth/1401) app (Windows and macOS) automates the driver install and its boot-picker entry
 (*1401: Remove NVIDIA driver*); this fork's job is only to produce the OpenCore side of that setup.
 
+## 🟦 **Intel Skylake/Kaby Lake graphics on macOS 14+**
+
+Apple removed the Skylake graphics driver in macOS 13, so OpCore Simplify drives Skylake (`0x09`/`0x19`) and Kaby Lake (`0x59`,
+`0x87C0`) integrated GPUs through the **Kaby Lake device-id spoof**, which is still native on macOS 14 and 15. That is a plain device-id
+spoof — no OCLP root patches are involved.
+
+macOS 14 tightened AMFI library validation, so without `AMFIPass` the system panics in `endpointsecurityd` while mapping `IOSurface`
+("mapping process is a platform binary, but mapped file is not"). The generator therefore adds `AMFIPass` and `RestrictEvents`
+automatically for these iGPUs on macOS 14 and newer, and says so on screen.
+
+The framebuffer connector table is board-specific, so one physical port (HDMI on desktop boards especially) can stay black even though
+the others work. When that happens, patch the connector map for your board
+([Dortania's guide](https://dortania.github.io/OpenCore-Post-Install/gpu-patching/intel-patching/connector.html), or Hackintool's
+*Framebuffer* tab) — the *Before Using EFI* screen reminds you. If the config contains `-igfxvesa` (added when a DVI/HDMI monitor is
+connected to the iGPU, which keeps the firmware display mode and disables acceleration), remove it once the map is patched.
+
 ## 🤝 **Contributing**
 
 Contributions are **highly appreciated**! If you have ideas to improve this project, feel free to fork the repo and create a pull request, or open an issue with the "enhancement" tag.

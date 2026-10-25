@@ -383,6 +383,19 @@ class OCPE:
 
         return requirements
 
+    def generated_boot_args(self):
+        """The boot-args from the config.plist that was just written, as a list."""
+        config_data = self.u.read_file(os.path.join(self.result_dir, "EFI", "OC", "config.plist"))
+        if not isinstance(config_data, dict):
+            return []
+
+        nvram_add = (config_data.get("NVRAM") or {}).get("Add") or {}
+        boot_args = ((nvram_add.get("7C436110-AB2A-4BBB-A880-FE41995C9F82") or {}).get("boot-args")) or ""
+        if isinstance(boot_args, (bytes, bytearray)):
+            boot_args = boot_args.decode("utf-8", "replace")
+
+        return str(boot_args).split()
+
     def before_using_efi(self, org_hardware_report, hardware_report, disabled_devices=None):
         self.u.head("Before Using EFI")
         print("")                 
@@ -406,6 +419,15 @@ class OCPE:
         print("        - If you have more than 15 ports on a single controller, enable the XhciPortLimit patch.")
         print("        - Save the file when finished.")
         print("")
+
+        display_hint = kext_maestro.intel_igpu_display_hint(
+            self.k.enabled_intel_igpus(hardware_report, disabled_devices),
+            self.generated_boot_args(),
+        )
+        if display_hint:
+            for line in display_hint:
+                print(line)
+            print("")
 
         nullmoth_cards = nullmoth.NullMoth.cards(hardware_report, disabled_devices)
         if nullmoth_cards:

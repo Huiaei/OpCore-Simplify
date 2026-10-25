@@ -17,6 +17,65 @@ except NameError:
     long = int
     unicode = str
 
+# Intel integrated GPU families that config_prodigy drives through the Kaby Lake
+# device-id spoof once macOS no longer ships their own driver.  Apple dropped the
+# Skylake driver in macOS 13 but kept the Kaby Lake one, so the spoof still runs
+# natively on macOS 14 and 15.
+LEGACY_INTEL_IGPU_PREFIXES = ("09", "19", "59", "87C0")
+
+# macOS 14 tightened AMFI library validation; the spoofed iGPUs need AMFIPass
+# from Sonoma onwards to stop the boot panic in endpointsecurityd.
+AMFIPASS_IGPU_MIN_DARWIN = "23.0.0"
+
+
+def is_intel_igpu(gpu_props):
+    """True when these GPU properties describe an Intel integrated GPU."""
+    gpu_props = gpu_props or {}
+    return "Integrated GPU" in (gpu_props.get("Device Type") or "") and "Intel" in (gpu_props.get("Manufacturer") or "")
+
+
+def intel_igpu_takes_kaby_lake_spoof(gpu_props):
+    """True when this Intel iGPU is driven through the Kaby Lake device-id spoof."""
+    if not is_intel_igpu(gpu_props):
+        return False
+
+    device_id = (gpu_props or {}).get("Device ID") or ""
+    return device_id[5:].startswith(LEGACY_INTEL_IGPU_PREFIXES)
+
+
+def intel_igpu_display_hint(enabled_igpus, boot_args=None):
+    """Lines reminding the user that iGPU connector mapping may need patching.
+
+    The generator has no way to know which physical port the monitor uses, and
+    macOS drives an Intel iGPU through a framebuffer whose connector table is
+    board-specific: on many desktop boards HDMI stays black while the other
+    ports work (lzhoang2801/OpCore-Simplify#717).
+    """
+    if not enabled_igpus:
+        return []
+
+    hints = [
+        "* Display Output ({}):".format(", ".join(enabled_igpus)),
+        "    - macOS drives the integrated GPU through a fixed framebuffer connector map",
+        "      that does not match every board, so one port can stay black (HDMI on",
+        "      desktop boards especially) while the others work fine.",
+        "    - If a port stays black, patch the connector map for your board:",
+        "      https://dortania.github.io/OpenCore-Post-Install/gpu-patching/intel-patching/connector.html",
+        "    - Hackintool (Framebuffer tab) can generate the patches, or add",
+        "      framebuffer-conX-* properties to the iGPU device in config.plist.",
+    ]
+
+    if "-igfxvesa" in (boot_args or []):
+        hints.extend((
+            "    - boot-args already contains -igfxvesa because a DVI/HDMI monitor is",
+            "      connected to the iGPU: it keeps the framebuffer on the firmware",
+            "      display mode and disables graphics acceleration. Once the connector",
+            "      map is patched, remove -igfxvesa from boot-args to enable Metal.",
+        ))
+
+    return hints
+
+
 class KextMaestro:
     def __init__(self):
         self.utils = utils.Utils()
@@ -136,6 +195,35 @@ class KextMaestro:
 
         return True
 
+    def intel_igpu_needs_amfipass(self, gpu_name, gpu_props, macos_version, disabled_devices=None):
+        """True when this Intel iGPU boots through the Kaby Lake spoof on macOS 14+.
+
+        Apple removed the Skylake graphics driver in macOS 13, so config_prodigy
+        drives Skylake and Kaby Lake iGPUs through the Kaby Lake device-id spoof,
+        which is still native in macOS 14 and 15.  macOS 14 tightened AMFI
+        library validation: without AMFIPass the boot panics in
+        endpointsecurityd while mapping IOSurface ("mapping process is a
+        platform binary, but mapped file is not").  This is the plain
+        device-id spoof, not the OCLP root-patch path, so needs_oclp stays
+        False (lzhoang2801/OpCore-Simplify#717).
+        """
+        if not intel_igpu_takes_kaby_lake_spoof(gpu_props):
+            return False
+
+        if nullmoth.NullMoth.gpu_disabled(gpu_name, gpu_props, disabled_devices):
+            return False
+
+        return self.utils.parse_darwin_version(macos_version) >= self.utils.parse_darwin_version(AMFIPASS_IGPU_MIN_DARWIN)
+
+    def enabled_intel_igpus(self, hardware_report, disabled_devices=None):
+        """Names of the Intel integrated GPUs that stay enabled in the build."""
+        return [
+            gpu_name
+            for gpu_name, gpu_props in (hardware_report.get("GPU") or {}).items()
+            if is_intel_igpu(gpu_props)
+            and not nullmoth.NullMoth.gpu_disabled(gpu_name, gpu_props, disabled_devices)
+        ]
+
     def select_required_kexts(self, hardware_report, macos_version, needs_oclp, acpi_patches, disabled_devices=None):
         self.utils.head("Select Required Kernel Extensions")
         print("")
@@ -201,6 +289,19 @@ class KextMaestro:
                     selected_kexts.append("NootedRed")
                 else:
                     selected_kexts.append("WhateverGreen")
+
+                    if self.intel_igpu_needs_amfipass(gpu_name, gpu_props, macos_version, disabled_devices):
+                        print("")
+                        print("*** Found {} has no native graphics driver in this macOS version.".format(gpu_name))
+                        print("")
+                        print("\033[1;93mNote:\033[0m")
+                        print("- It is driven through the Kaby Lake device-id spoof instead.")
+                        print("- macOS 14 and newer enforce AMFI library validation, so the system")
+                        print("  panics in endpointsecurityd without AMFIPass.")
+                        print("- AMFIPass and RestrictEvents are added automatically.")
+                        print("- This is a plain device-id spoof: no OCLP root patches are needed.")
+                        print("")
+                        selected_kexts.extend(("AMFIPass", "RestrictEvents"))
             else:
                 if "Navi 22" in gpu_props.get("Codename"):
                     selected_kexts.append("NootRX")
