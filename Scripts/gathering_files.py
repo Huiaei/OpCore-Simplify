@@ -268,7 +268,8 @@ class gatheringFiles:
                 product_download_url,
                 zip_path,
                 sha256_hash,
-                mirrors=self.fetcher._get_github_mirrors(product_download_url)
+                mirrors=self.fetcher._get_github_mirrors(product_download_url),
+                validate=self.utils.is_valid_zip
             ):
                 folder_is_valid, _ = self.integrity_checker.verify_folder_integrity(asset_dir, manifest_path)
                 if history_item is not None and folder_is_valid:
@@ -304,7 +305,8 @@ class gatheringFiles:
                 self.fetcher.download_and_save_file(
                     self.ocbinarydata_url,
                     oc_binary_data_zip_path,
-                    mirrors=self.fetcher._get_github_mirrors(self.ocbinarydata_url)
+                    mirrors=self.fetcher._get_github_mirrors(self.ocbinarydata_url),
+                    validate=self.utils.is_valid_zip
                 )
 
                 if not os.path.exists(oc_binary_data_zip_path):

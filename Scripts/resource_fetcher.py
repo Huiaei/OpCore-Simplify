@@ -267,11 +267,11 @@ class ResourceFetcher:
             
         print()
 
-    def download_and_save_file(self, resource_url, destination_path, sha256_hash=None, mirrors=None):
+    def download_and_save_file(self, resource_url, destination_path, sha256_hash=None, mirrors=None, validate=None):
         candidate_urls = [resource_url] + list(mirrors or [])
 
         for url in candidate_urls:
-            if self._download_with_retries(url, destination_path, sha256_hash):
+            if self._download_with_retries(url, destination_path, sha256_hash, validate):
                 return True
 
         print("Failed to download {} after {} attempts.".format(resource_url, MAX_ATTEMPTS))
@@ -282,7 +282,7 @@ class ResourceFetcher:
                 pass
         return False
 
-    def _download_with_retries(self, resource_url, destination_path, sha256_hash=None):
+    def _download_with_retries(self, resource_url, destination_path, sha256_hash=None, validate=None):
         attempt = 0
 
         while attempt < MAX_ATTEMPTS:
@@ -340,6 +340,17 @@ class ResourceFetcher:
                         print("Checksum mismatch! Removing file and retrying download...")
                         os.remove(destination_path)
                         continue
+                elif validate is not None and not validate(destination_path):
+                    # A dropped connection can end the transfer without an error,
+                    # leaving a truncated archive that only fails later, deep in
+                    # the extraction step.  Half a zip is worse than no zip, so
+                    # throw it away and fetch it again (issue #511).
+                    print("Downloaded file failed validation. Removing file and retrying download...")
+                    try:
+                        os.remove(destination_path)
+                    except OSError:
+                        pass
+                    continue
                 else:
                     print("No SHA256 hash provided. Downloading file without verification.")
                     return True

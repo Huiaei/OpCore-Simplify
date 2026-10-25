@@ -116,6 +116,19 @@ class Utils:
     def string_to_hex(self, string):
         return ''.join(format(ord(char), '02X') for char in string)
     
+    def is_valid_zip(self, zip_path):
+        """True when zip_path is a complete, readable zip archive.
+
+        A download that dropped halfway leaves a file that zipfile only rejects
+        much later, during extraction, so the fetcher checks it up front
+        (lzhoang2801/OpCore-Simplify#511).
+        """
+        try:
+            with zipfile.ZipFile(zip_path, "r") as archive:
+                return archive.testzip() is None
+        except (OSError, EOFError, ValueError, zipfile.BadZipFile):
+            return False
+
     def extract_zip_file(self, zip_path, extraction_directory=None):
         if extraction_directory is None:
             extraction_directory = os.path.splitext(zip_path)[0]
