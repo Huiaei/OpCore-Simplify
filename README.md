@@ -6,9 +6,14 @@
     A specialized tool that streamlines <a href="https://github.com/acidanthera/OpenCorePkg">OpenCore</a> EFI creation by automating the essential setup process and providing standardized configurations. Designed to reduce manual effort while ensuring accuracy in your Hackintosh journey.
     <br />
     <br />
+    <b>English</b> •
+    <a href="README.zh-CN.md">简体中文</a> •
+    <a href="#ai-generated">AI notice</a> •
     <a href="#-this-branch">This branch</a> •
     <a href="#-features">Features</a> •
     <a href="#-how-to-use">How To Use</a> •
+    <a href="#nullmoth">NullMoth driver</a> •
+    <a href="#intel-igpu">Intel iGPU</a> •
     <a href="#-contributing">Contributing</a> •
     <a href="#-license">License</a> •
     <a href="#-credits">Credits</a> •
@@ -19,6 +24,26 @@
     <a href="https://trendshift.io/repositories/15410" target="_blank"><img src="https://trendshift.io/api/badge/repositories/15410" alt="lzhoang2801%2FOpCore-Simplify | Trendshift" style="width: 250px; height: 55px;" width="250" height="55"/></a>
   </p>
 </div>
+
+<a id="ai-generated"></a>
+
+> [!CAUTION]
+> **AI-generated content — read this before you flash anything.**
+>
+> The commits on this branch (`fork-local-fixes`) and the branch-specific sections of this document were written by an AI agent
+> (DSH) working from human instructions. The upstream project and the `main` mirror are the original author's work, not the agent's.
+>
+> What the agent actually verified: the `unittest` suites, end-to-end `config.plist` generation for a handful of machine profiles,
+> and one complete EFI build in a virtual machine. **It has never booted real hardware with these changes.** Treat everything here as
+> a proposal to review, not a finished product:
+>
+> - read the diff with `git diff main..fork-local-fixes`;
+> - check anything unfamiliar against the [Dortania Guide](https://dortania.github.io/OpenCore-Install-Guide/);
+> - keep a bootable EFI or a backup before touching your own machine.
+>
+> No warranty is given — see the license below.
+>
+> 🌐 简体中文文档：[README.zh-CN.md](README.zh-CN.md)。
 
 > [!WARNING]
 > While OpCore Simplify significantly reduces setup time, the Hackintosh journey still requires:
@@ -33,6 +58,8 @@
 This is the `fork-local-fixes` branch. It is `main` plus a set of local additions, and it is where all of the work below lives. `main` stays a mirror of the upstream project, so the two never diverge silently: everything described here exists only on this branch.
 
 Nothing about the tool's workflow changes — the same prompts, the same generated EFI layout, the same OpenCore conventions. What changes is the hardware it knows about, how it behaves on a network where GitHub is slow or unreachable, and a handful of bugs that used to end a build with an error.
+
+> 简体中文版：[README.zh-CN.md 中的「本分支说明」](README.zh-CN.md#this-branch)
 
 ### What this branch adds
 
@@ -201,7 +228,9 @@ Six pull requests and part of a seventh are folded in, because they fix real def
 > 
 > 2. For AMD GPUs, after applying root patches from OpenCore Legacy Patcher, you need to remove the boot argument `-radvesa`/`-amd_no_dgpu_accel` for graphics acceleration to work.
 >
-> 3. For an NVIDIA Turing-or-newer card, see [NullMoth NVIDIA driver](#nullmoth-nvidia-driver) below.
+> 3. For an NVIDIA Turing-or-newer card, see [NullMoth NVIDIA driver](#nullmoth) below.
+
+<a id="nullmoth"></a>
 
 ## 🟫 **NullMoth NVIDIA driver**
 
@@ -253,6 +282,8 @@ system_profiler SPDisplaysDataType | head -20   # your card, Metal: supported
 
 The [1401](https://github.com/nullmoth/1401) app (Windows and macOS) automates the driver install and its boot-picker entry
 (*1401: Remove NVIDIA driver*); this fork's job is only to produce the OpenCore side of that setup.
+
+<a id="intel-igpu"></a>
 
 ## 🟦 **Intel Skylake/Kaby Lake graphics on macOS 14+**
 
