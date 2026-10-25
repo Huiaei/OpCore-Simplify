@@ -6,6 +6,7 @@
     A specialized tool that streamlines <a href="https://github.com/acidanthera/OpenCorePkg">OpenCore</a> EFI creation by automating the essential setup process and providing standardized configurations. Designed to reduce manual effort while ensuring accuracy in your Hackintosh journey.
     <br />
     <br />
+    <a href="#-this-branch">This branch</a> •
     <a href="#-features">Features</a> •
     <a href="#-how-to-use">How To Use</a> •
     <a href="#-contributing">Contributing</a> •
@@ -26,6 +27,70 @@
 > - Patience and persistence in resolving any issues that arise
 >
 > Our tool does not guarantee a successful installation in the first attempt, but it should help you get started.
+
+## 🌿 **This branch**
+
+This is the `fork-local-fixes` branch. It is `main` plus a set of local additions, and it is where all of the work below lives. `main` stays a mirror of the upstream project, so the two never diverge silently: everything described here exists only on this branch.
+
+Nothing about the tool's workflow changes — the same prompts, the same generated EFI layout, the same OpenCore conventions. What changes is the hardware it knows about, how it behaves on a network where GitHub is slow or unreachable, and a handful of bugs that used to end a build with an error.
+
+### What this branch adds
+
+**1. NVIDIA graphics through the NullMoth driver (Turing and newer)**
+
+macOS 15 dropped the last NVIDIA drivers, and the community driver by NullMoth brings Turing, Ampere, Ada and Blackwell cards back. That driver is not an EFI kext — it is installed into `/Library/Extensions` and loaded from the Auxiliary Kernel Collection — so a standard OpenCore config actively gets in its way. This branch teaches the tool the driver's rules:
+
+- Detects a supported card by PCI device id, using the list published with the open kernel modules, and offers only macOS 15 Sequoia for it.
+- Writes the driver's boot arguments, SIP value, `SecureBootModel`, memory-map quirks and the `IONDRVSupport` exclusion, and never injects the driver's kexts into `EFI/OC/Kexts`.
+- Adds the laptop wake property when the card sits behind an Optimus path, and warns when more than one supported card is present (the driver can only own one).
+- Resolves the driver package from its latest release, with a pinned fallback so an offline run still works.
+- Ends the build with a short "before using this EFI" panel about installing the driver, and ships `Scripts/nullmoth_selftest.py` so the rules can be re-checked without hardware.
+- Reports such a card as supported *without* an "OCLP Compatibility" line, because the driver replaces OCLP for those GPUs instead of patching them.
+
+**2. Realtek Wi-Fi (AirPort Family, RTW88 and the legacy HS80211 stack)**
+
+Cards like the RTL8852BE are selectable now, with the right kext set per macOS version and the Monterey exclusion handled. This came in from an upstream pull request; three defects in it were corrected here — a kext it required that did not exist, an asset name that no longer matched the published release, and a duplicate bundle that ended up in `EFI/OC/Kexts` twice.
+
+**3. Surviving a hostile network**
+
+Every download now has a second, third and fourth place to come from, and a download that dies halfway is resumed rather than restarted:
+
+- github.com, `raw.githubusercontent.com` and `api.github.com` all fall back to public mirrors, so a blocked or throttled GitHub no longer stops the build.
+- Transfers resume from the bytes already on disk, use a 30 second read timeout, and retry a stalled body read instead of aborting.
+- A downloaded archive is checked to be a real zip before it is extracted, and re-fetched when it is not — a 12.1 of 14.4 MB partial file used to be accepted, because that release publishes no checksum, and only failed later as "File is not a zip file".
+- When the release and commit pages cannot be scraped, the GitHub API takes over (commit list, release index, release by tag), and the `iasl` compiler is located with a single request instead of one per release.
+- The self-updater now points at this fork instead of upstream, so updating cannot silently overwrite the changes on this branch, and it asks before replacing local files after showing which ones differ.
+
+**4. Consoles, logs and headless runs**
+
+- On a non-UTF-8 console (Chinese Windows, cp437 terminals) the bullets, ticks and progress bar degrade to plain ASCII instead of raising `UnicodeEncodeError` and ending the run with an empty error box.
+- The crash handler can no longer fail while printing the traceback, which is what made those runs exit with only "An Error Occurred".
+- Every run writes a log next to the repository: `logs/OpCore-Simplify-<timestamp>.log`, ANSI colour stripped, copied to `logs/latest.log` at exit. No shell redirection needed — on PowerShell `| tee` writes UTF-16 and drops stderr.
+- Piped or headless sessions exit cleanly instead of showing an `EOFError` traceback, and the results folder is not opened when there is no desktop session.
+- On Linux the ACPI tables are copied directly instead of through `sudo`.
+- If the Windows hardware sniffer cannot dump the ACPI tables (exit code 5 — common with Secure Boot or memory integrity enabled), the tables are read through the Windows firmware table API and the build continues.
+
+**5. Correctness fixes**
+
+- An SSDT that fails to compile no longer leaves its `.dsl` in the results and is no longer referenced by the config, so OpenCore does not log a missing file.
+- Comet Lake systems (NUC10 and similar) get `Cpuid1Data`/`Cpuid1Mask` on macOS 15, where the boot used to stop at `EXITBS:START`.
+- Intel Skylake and Kaby Lake integrated graphics on macOS 14 and newer get `AMFIPass` and `RestrictEvents` automatically — the systems panicked in `endpointsecurityd` without them — while staying on the plain device-id spoof instead of the OCLP patching flow. A note explains when a display connector map may still be needed.
+- Intel PRO/1000 PT (`8086:105E`) is reported as supported up to macOS 12, matching what Apple's own driver actually covers.
+- ACPI paths that are not rooted at `_SB` (thermal and fan devices under `_TZ_`, and similar) pass validation again.
+
+**6. Upstream pull requests integrated here**
+
+Six pull requests and part of a seventh are folded in, because they fix real defects and none of them conflict with the work above: the `certifi` requirement for Windows SSL, tolerance for a nested commits payload (the updater could not read the latest commit), ACPI path validation that accepts anything not `_SB`-rooted, a directory-merge helper that also runs on older Python, an ASCII progress bar, and the Realtek Wi-Fi support. Where a patch did not apply cleanly against this branch's context, it was adapted by hand rather than dropped, and where two pull requests changed the same line the one with the wider coverage was kept.
+
+**7. Tests**
+
+`Tests/` and `tests/` hold `unittest` suites that need no network and no hardware, covering the driver rules, the download and mirror logic, the console fallbacks, the ACPI fallbacks and the merged pull requests. `Scripts/nullmoth_selftest.py` checks the driver rules directly. A GitHub Actions workflow runs the suites on Windows and Linux.
+
+### Branch notes
+
+- Branch: `fork-local-fixes`, based on the upstream project as mirrored in `main`.
+- `main` in this fork is kept as a clean mirror, so `git diff main..fork-local-fixes` shows exactly this set of changes.
+- Upstream remains the original author's project — this branch is a local integration, not a replacement.
 
 ## ✨ **Features**
 
